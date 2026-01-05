@@ -600,6 +600,80 @@ async fn network_faucet_mint() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Tests that minting fails when a non-owner tries to call mint
+#[tokio::test]
+async fn network_faucet_mint_fails_for_non_owner() -> anyhow::Result<()> {
+    let mut builder = MockChain::builder();
+
+    let faucet_owner_account_id = AccountId::dummy(
+        [1; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    // Create a different account that is NOT the owner
+    let non_owner_account_id = AccountId::dummy(
+        [2; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    let faucet =
+        builder.add_existing_network_faucet("NET", 1000, faucet_owner_account_id, Some(50))?;
+
+    // Create a target account to consume the minted note
+    let target_account = builder.add_existing_wallet(Auth::IncrNonce)?;
+
+    let amount = Felt::new(75);
+    let mint_asset: Asset = FungibleAsset::new(faucet.id(), amount.into()).unwrap().into();
+    let aux = Felt::new(27);
+    let serial_num = Word::default();
+
+    let output_note_tag = NoteTag::from_account_id(target_account.id());
+    let p2id_mint_output_note = create_p2id_note_exact(
+        faucet.id(),
+        target_account.id(),
+        vec![mint_asset],
+        NoteType::Private,
+        aux,
+        serial_num,
+    )
+    .unwrap();
+    let recipient = p2id_mint_output_note.recipient().digest();
+
+    // Create the MINT note using the helper function, but with NON-OWNER as sender
+    let mint_inputs = MintNoteInputs::new_private(
+        recipient,
+        amount,
+        output_note_tag.into(),
+        NoteExecutionHint::always(),
+        aux,
+    );
+
+    let mut rng = RpoRandomCoin::new([Felt::from(42u32); 4].into());
+    let mint_note =
+        create_mint_note(faucet.id(), non_owner_account_id, mint_inputs, aux, &mut rng)?;
+
+    // Add the MINT note to the mock chain
+    builder.add_output_note(OutputNote::Full(mint_note.clone()));
+    let mut mock_chain = builder.build()?;
+
+    // EXECUTE MINT NOTE AGAINST NETWORK FAUCET - should fail
+    // --------------------------------------------------------------------------------------------
+    let tx_context = mock_chain.build_tx_context(faucet.id(), &[mint_note.id()], &[])?.build()?;
+    let result = tx_context.execute().await;
+
+    // Verify that the transaction failed with ERR_ONLY_OWNER
+    // Note: ERR_ONLY_OWNER will be auto-generated from MASM files, but for now we use the error directly
+    use miden_protocol::errors::MasmError;
+    let expected_error = MasmError::from_static_str("note sender is not the owner");
+    assert_transaction_executor_error!(result, expected_error);
+
+    Ok(())
+}
+
 // TESTS FOR FAUCET PROCEDURE COMPATIBILITY
 // ================================================================================================
 

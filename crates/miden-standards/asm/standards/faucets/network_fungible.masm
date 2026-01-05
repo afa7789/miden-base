@@ -3,36 +3,11 @@ use miden::protocol::account_id
 use miden::protocol::active_note
 use miden::standards::faucets
 use miden::standards::faucets::basic_fungible
-
-# CONSTANTS
-# ================================================================================================
-
-# The slot in this component's storage layout where the owner config is stored.
-const OWNER_CONFIG_SLOT=word("miden::standards::network_fungible_faucet::owner_config")
+use miden::standards::utils::ownable
 
 # ERRORS
+# ================================================================================================
 const ERR_ONLY_OWNER_CAN_MINT="note sender is not the owner of the faucet who can mint assets"
-
-#! Checks if the note sender is the owner of this faucet.
-#!
-#! Inputs:  []
-#! Outputs: [is_owner]
-#!
-#! Where:
-#! - is_owner is 1 if the sender is the owner, 0 otherwise.
-proc is_owner
-    push.OWNER_CONFIG_SLOT[0..2] exec.active_account::get_item
-    # => [owner_prefix, owner_suffix, 0, 0]
-
-    exec.active_note::get_sender
-    # => [sender_prefix, sender_suffix, owner_prefix, owner_suffix, 0, 0]
-
-    exec.account_id::is_equal
-    # => [are_equal, 0, 0]
-
-    movdn.2 drop drop
-    # => [is_owner]
-end
 
 #! Distributes freshly minted fungible assets to the provided recipient.
 #!
@@ -56,10 +31,7 @@ end
 #!
 #! Invocation: call
 pub proc distribute
-    exec.is_owner
-    # => [is_owner, amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
-
-    assert.err=ERR_ONLY_OWNER_CAN_MINT
+    exec.ownable::check_owner
     # => [amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
 
     exec.faucets::distribute
