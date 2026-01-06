@@ -84,7 +84,8 @@ end
 pub proc get_owner
     exec.owner
     # => [owner_prefix, owner_suffix, 0, 0]
-    # Clean up and return pad(14)
+    
+    # ------ Clean up and return pad(14) ------
     drop drop
     # => [owner_prefix, owner_suffix, pad(14)]
 end
