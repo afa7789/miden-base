@@ -881,12 +881,20 @@ async fn test_mint_note_output_note_types(#[case] note_type: NoteType) -> anyhow
     Ok(())
 }
 
-/// Tests the full ownership transfer flow for network faucet
+/// Tests the full ownership transfer flow for network faucet.
+///
+/// This test verifies the `transfer_ownership` procedure from the ownable module by executing
+/// the following flow:
+/// 1. Mint some assets with the owner (should succeed)
+/// 2. Try to transfer ownership from a non-owner account (should fail)
+/// 3. Transfer ownership from owner to new_owner (should succeed)
+/// 4. Try to mint assets with the OLD owner (should fail)
+/// 5. Mint assets with the NEW owner (should succeed)
 #[tokio::test]
 async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
     let mut builder = MockChain::builder();
 
-    // 1. Create initial owner and new owner accounts
+    // 0. Create initial owner and new owner accounts
     let initial_owner_account_id = AccountId::dummy(
         [1; 15],
         AccountIdVersion::Version0,
@@ -917,7 +925,7 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
 
     let mut mock_chain = builder.build()?;
 
-    // 2. Mint some assets with the owner (should succeed)
+    // Step 1: Mint some assets with the owner (should succeed)
     // --------------------------------------------------------------------------------------------
     let amount = Felt::new(75);
     let mint_asset: Asset = FungibleAsset::new(faucet.id(), amount.into()).unwrap().into();
@@ -953,14 +961,13 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
         &mut rng,
     )?;
 
-    mock_chain.add_output_note(OutputNote::Full(mint_note.clone()));
     let tx_context = mock_chain
-        .build_tx_context(faucet.id(), &[mint_note.id()], &[])?
+        .build_tx_context(faucet.id(), &[], &[mint_note.clone()])?
         .build()?;
     let executed_transaction = tx_context.execute().await?;
     assert_eq!(executed_transaction.output_notes().num_notes(), 1);
 
-    // 3. Try to transfer ownership from a non-owner account (should fail)
+    // Step 2: Try to transfer ownership from a non-owner account (should fail)
     // --------------------------------------------------------------------------------------------
     let transfer_note_script_code = format!(
         r#"
@@ -988,9 +995,9 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
     let transfer_note_script = CodeBuilder::with_source_manager(source_manager.clone())
         .compile_note_script(transfer_note_script_code.clone())?;
 
-    // Create a note from non-owner that tries to transfer ownership
+    // 2.1 Create a note from non-owner that tries to transfer ownership
     let mut rng = RpoRandomCoin::new([Felt::from(100u32); 4].into());
-    let transfer_note = NoteBuilder::new(faucet.id(), &mut rng)
+    let transfer_note = NoteBuilder::new(non_owner_account_id, &mut rng)
         .note_type(NoteType::Private)
         .tag(NoteTag::for_local_use_case(0, 0)?.into())
         .note_execution_hint(NoteExecutionHint::always())
@@ -999,9 +1006,8 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
         .code(transfer_note_script_code.clone())
         .build()?;
 
-    mock_chain.add_output_note(OutputNote::Full(transfer_note.clone()));
     let tx_context = mock_chain
-        .build_tx_context(faucet.id(), &[transfer_note.id()], &[])?
+        .build_tx_context(faucet.id(), &[], &[transfer_note.clone()])?
         .add_note_script(transfer_note_script.clone())
         .with_source_manager(source_manager.clone())
         .build()?;
@@ -1012,11 +1018,11 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
     let expected_error = MasmError::from_static_str("note sender is not the owner");
     assert_transaction_executor_error!(result, expected_error);
 
-    // 4. Transfer ownership from owner to new_owner (should succeed)
+    // Step 3: Transfer ownership from owner to new_owner (should succeed)
     // --------------------------------------------------------------------------------------------
     // Create a note from the initial owner that transfers ownership
     let mut rng = RpoRandomCoin::new([Felt::from(200u32); 4].into());
-    let transfer_note_owner = NoteBuilder::new(faucet.id(), &mut rng)
+    let transfer_note_owner = NoteBuilder::new(initial_owner_account_id, &mut rng)
         .note_type(NoteType::Private)
         .tag(NoteTag::for_local_use_case(0, 0)?.into())
         .note_execution_hint(NoteExecutionHint::always())
@@ -1025,9 +1031,8 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
         .code(transfer_note_script_code.clone())
         .build()?;
 
-    mock_chain.add_output_note(OutputNote::Full(transfer_note_owner.clone()));
     let tx_context = mock_chain
-        .build_tx_context(faucet.id(), &[transfer_note_owner.id()], &[])?
+        .build_tx_context(faucet.id(), &[], &[transfer_note_owner.clone()])?
         .add_note_script(transfer_note_script.clone())
         .with_source_manager(source_manager.clone())
         .build()?;
@@ -1037,7 +1042,7 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
     mock_chain.add_pending_executed_transaction(&executed_transaction)?;
     mock_chain.prove_next_block()?;
 
-    // 5. Try to mint assets with the OLD owner (should fail)
+    // Step 4: Try to mint assets with the OLD owner (should fail)
     // --------------------------------------------------------------------------------------------
     let mint_inputs_old_owner = MintNoteInputs::new_private(
         recipient,
@@ -1056,16 +1061,15 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
         &mut rng,
     )?;
 
-    mock_chain.add_output_note(OutputNote::Full(mint_note_old_owner.clone()));
     let tx_context = mock_chain
-        .build_tx_context(faucet.id(), &[mint_note_old_owner.id()], &[])?
+        .build_tx_context(faucet.id(), &[], &[mint_note_old_owner.clone()])?
         .build()?;
     let result = tx_context.execute().await;
 
     // Verify that the transaction failed with ERR_ONLY_OWNER
     assert_transaction_executor_error!(result, expected_error);
 
-    // 6. Mint assets with the NEW owner (should succeed)
+    // Step 5: Mint assets with the NEW owner (should succeed)
     // --------------------------------------------------------------------------------------------
     let mint_inputs_new_owner = MintNoteInputs::new_private(
         recipient,
@@ -1084,9 +1088,8 @@ async fn test_transfer_ownership_flow() -> anyhow::Result<()> {
         &mut rng,
     )?;
 
-    mock_chain.add_output_note(OutputNote::Full(mint_note_new_owner.clone()));
     let tx_context = mock_chain
-        .build_tx_context(faucet.id(), &[mint_note_new_owner.id()], &[])?
+        .build_tx_context(faucet.id(), &[], &[mint_note_new_owner.clone()])?
         .build()?;
     let executed_transaction = tx_context.execute().await?;
 
