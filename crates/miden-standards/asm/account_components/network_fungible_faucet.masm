@@ -2,8 +2,8 @@
 #
 # See the `NetworkFungibleFaucet` Rust type's documentation for more details.
 
-use miden::standards::utils::ownable
+use miden::standards::utils::access::ownable
 
 pub use ::miden::standards::faucets::network_fungible::distribute
 pub use ::miden::standards::faucets::network_fungible::burn
-pub use ::miden::standards::utils::ownable::transfer_ownership
+pub use ::miden::standards::utils::access::ownable::transfer_ownership

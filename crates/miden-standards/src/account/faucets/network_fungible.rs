@@ -37,7 +37,7 @@ procedure_digest!(
 );
 
 static OWNER_CONFIG_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::utils::ownable::owner_config")
+    StorageSlotName::new("miden::standards::utils::access::ownable::owner_config")
         .expect("storage slot name should be valid")
 });
 
@@ -169,7 +169,7 @@ impl NetworkFungibleFaucet {
     /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s owner configuration is
     /// stored.
     ///
-    /// This uses the standard `miden::standards::utils::ownable::owner_config` slot to ensure
+    /// This uses the standard `miden::standards::utils::access::ownable::owner_config` slot to ensure
     /// compatibility with the ownable template.
     pub fn owner_config_slot() -> &'static StorageSlotName {
         &OWNER_CONFIG_SLOT_NAME

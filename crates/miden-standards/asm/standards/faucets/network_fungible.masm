@@ -3,11 +3,7 @@ use miden::protocol::account_id
 use miden::protocol::active_note
 use miden::standards::faucets
 use miden::standards::faucets::basic_fungible
-use miden::standards::utils::ownable
-
-# ERRORS
-# ================================================================================================
-const ERR_ONLY_OWNER_CAN_MINT="note sender is not the owner of the faucet who can mint assets"
+use miden::standards::utils::access::ownable
 
 #! Distributes freshly minted fungible assets to the provided recipient.
 #!
@@ -31,7 +27,8 @@ const ERR_ONLY_OWNER_CAN_MINT="note sender is not the owner of the faucet who ca
 #!
 #! Invocation: call
 pub proc distribute
-    exec.ownable::check_owner
+    # ------ Only the owner can distribute ------
+    exec.ownable::only_owner
     # => [amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
 
     exec.faucets::distribute
