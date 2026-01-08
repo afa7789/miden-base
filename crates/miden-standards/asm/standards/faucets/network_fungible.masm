@@ -42,6 +42,7 @@ proc is_owner
     # => [is_owner]
 end
 
+
 # PUBLIC INTERFACE
 # ================================================================================================
 
@@ -87,6 +88,7 @@ pub proc distribute
     # => [is_owner, amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
 
     assert.err=ERR_ONLY_OWNER
+
     # => [amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
 
     exec.faucets::distribute

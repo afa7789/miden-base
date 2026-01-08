@@ -7,6 +7,7 @@
 # directly in the modules that use it (e.g., network_fungible.masm) because template modules
 # cannot access storage slots registered by the component that imports them.
 
+
 use miden::protocol::active_account
 use miden::protocol::account_id
 use miden::protocol::active_note
@@ -126,6 +127,7 @@ pub proc transfer_ownership
 
     # Remove OLD_OWNER_WORD (4 felts) and keep pad(12)
     dropw
+
     # => [pad(16)]
 end
 

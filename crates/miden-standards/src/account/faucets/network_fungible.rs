@@ -168,6 +168,9 @@ impl NetworkFungibleFaucet {
 
     /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s owner configuration is
     /// stored.
+    ///
+    /// This uses the standard `miden::standards::utils::access::ownable::owner_config` slot to ensure
+    /// compatibility with the ownable template.
     pub fn owner_config_slot() -> &'static StorageSlotName {
         &OWNER_CONFIG_SLOT_NAME
     }
