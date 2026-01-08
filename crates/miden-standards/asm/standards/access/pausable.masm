@@ -5,9 +5,16 @@
 #
 # Usage:
 #   use miden::standards::utils::access::pausable
+#   
+#   # In account procedures (not from note scripts):
 #   exec.pausable::is_not_paused
 #   exec.pausable::pause
 #   exec.pausable::unpause
+#
+# IMPORTANT CONTEXT REQUIREMENTS:
+# - is_not_paused, pause, and unpause MUST be called from Account context (i.e., from account procedures)
+# - They CANNOT be called directly from note scripts using exec
+# - Note scripts should call account procedures, which then call these pausable procedures
 #
 # NOTE: The pause and unpause procedures do NOT check ownership. The caller must ensure
 # that only_owner is called before calling these procedures.
@@ -37,6 +44,16 @@ const ERR_IS_PAUSED="contract is paused"
 #!
 #! Panics if:
 #! - the component is paused (storage slot value is not zero).
+#!
+#! CONTEXT REQUIREMENT:
+#! - MUST be called from Account context (from an account procedure)
+#! - CANNOT be called directly from note scripts using exec
+#! - Note scripts should call account procedures that internally call this procedure
+#!
+#! NOTE: Uses active_account::get_item which authenticates account origin via
+#! authenticate_account_origin. This means it can only be called from account procedures,
+#! not directly from note scripts. This is by design - pause checks should be integrated
+#! into account procedures (e.g., distribute, burn) rather than called directly from notes.
 pub proc is_not_paused
     push.PAUSABLE_SLOT[0..2] exec.active_account::get_item
     # => [paused_flag, 0, 0, 0]

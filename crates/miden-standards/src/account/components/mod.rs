@@ -70,6 +70,15 @@ static NETWORK_FUNGIBLE_FAUCET_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     Library::read_from_bytes(bytes).expect("Shipped Network Fungible Faucet library is well-formed")
 });
 
+// Initialize the Regulated Network Fungible Faucet library only once.
+static REGULATED_NETWORK_FUNGIBLE_FAUCET_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+    let bytes = include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/assets/account_components/regulated_network_fungible_faucet.masl"
+    ));
+    Library::read_from_bytes(bytes).expect("Shipped Regulated Network Fungible Faucet library is well-formed")
+});
+
 // Initialize the Rpo Falcon 512 ACL library only once.
 static RPO_FALCON_512_ACL_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     let bytes = include_bytes!(concat!(
@@ -107,6 +116,11 @@ pub fn basic_fungible_faucet_library() -> Library {
 /// Returns the Network Fungible Faucet Library.
 pub fn network_fungible_faucet_library() -> Library {
     NETWORK_FUNGIBLE_FAUCET_LIBRARY.clone()
+}
+
+/// Returns the Regulated Network Fungible Faucet Library.
+pub fn regulated_network_fungible_faucet_library() -> Library {
+    REGULATED_NETWORK_FUNGIBLE_FAUCET_LIBRARY.clone()
 }
 
 /// Returns the ECDSA K256 Keccak Library.
@@ -152,6 +166,7 @@ pub enum WellKnownComponent {
     BasicWallet,
     BasicFungibleFaucet,
     NetworkFungibleFaucet,
+    RegulatedNetworkFungibleFaucet,
     AuthEcdsaK256Keccak,
     AuthEcdsaK256KeccakAcl,
     AuthEcdsaK256KeccakMultisig,
@@ -168,6 +183,7 @@ impl WellKnownComponent {
             Self::BasicWallet => BASIC_WALLET_LIBRARY.as_ref(),
             Self::BasicFungibleFaucet => BASIC_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
             Self::NetworkFungibleFaucet => NETWORK_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
+            Self::RegulatedNetworkFungibleFaucet => REGULATED_NETWORK_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
             Self::AuthEcdsaK256Keccak => ECDSA_K256_KECCAK_LIBRARY.as_ref(),
             Self::AuthEcdsaK256KeccakAcl => ECDSA_K256_KECCAK_ACL_LIBRARY.as_ref(),
             Self::AuthEcdsaK256KeccakMultisig => ECDSA_K256_KECCAK_MULTISIG_LIBRARY.as_ref(),
@@ -216,6 +232,9 @@ impl WellKnownComponent {
                 },
                 Self::NetworkFungibleFaucet => {
                     component_interface_vec.push(AccountComponentInterface::NetworkFungibleFaucet)
+                },
+                Self::RegulatedNetworkFungibleFaucet => {
+                    component_interface_vec.push(AccountComponentInterface::RegulatedNetworkFungibleFaucet)
                 },
                 Self::AuthEcdsaK256Keccak => {
                     component_interface_vec.push(AccountComponentInterface::AuthEcdsaK256Keccak)

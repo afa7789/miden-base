@@ -47,7 +47,9 @@ use miden_protocol::testing::account_id::ACCOUNT_ID_NATIVE_ASSET_FAUCET;
 use miden_protocol::testing::random_signer::RandomBlockSigner;
 use miden_protocol::transaction::{OrderedTransactionHeaders, OutputNote, TransactionKernel};
 use miden_protocol::{Felt, FieldElement, MAX_OUTPUT_NOTES_PER_BATCH, NoteError, Word, ZERO};
-use miden_standards::account::faucets::{BasicFungibleFaucet, NetworkFungibleFaucet};
+use miden_standards::account::faucets::{
+    BasicFungibleFaucet, NetworkFungibleFaucet, RegulatedNetworkFungibleFaucet,
+};
 use miden_standards::account::wallets::BasicWallet;
 use miden_standards::note::{create_p2id_note, create_p2ide_note, create_swap_note};
 use miden_standards::testing::account_component::MockAccountComponent;
@@ -385,6 +387,51 @@ impl MockChainBuilder {
         let account_builder = AccountBuilder::new(self.rng.random())
             .storage_mode(AccountStorageMode::Network)
             .with_component(network_faucet)
+            .account_type(AccountType::FungibleFaucet);
+
+        // Network faucets always use Noop auth (no authentication)
+        let mut account =
+            self.add_account_from_builder(Auth::IncrNonce, account_builder, AccountState::Exists)?;
+
+        // The faucet's sysdata slot is initialized to an empty word by default.
+        // If total_issuance is set, overwrite it and reinsert the account.
+        if let Some(issuance) = total_issuance {
+            account
+                .storage_mut()
+                .set_item(
+                    AccountStorage::faucet_sysdata_slot(),
+                    Word::from([ZERO, ZERO, ZERO, Felt::new(issuance)]),
+                )
+                .context("failed to set faucet storage")?;
+            self.accounts.insert(account.id(), account.clone());
+        }
+
+        Ok(account)
+    }
+
+    /// Adds an existing [`RegulatedNetworkFungibleFaucet`] account to the initial chain state.
+    ///
+    /// Regulated network fungible faucets always use `AccountStorageMode::Network` and `Auth::NoAuth`.
+    /// They include pausable functionality for pause/unpause operations.
+    pub fn add_existing_regulated_network_faucet(
+        &mut self,
+        token_symbol: &str,
+        max_supply: u64,
+        owner_account_id: AccountId,
+        total_issuance: Option<u64>,
+    ) -> anyhow::Result<Account> {
+        let token_symbol = TokenSymbol::new(token_symbol).context("invalid argument")?;
+        let regulated_faucet = RegulatedNetworkFungibleFaucet::new(
+            token_symbol,
+            DEFAULT_FAUCET_DECIMALS,
+            Felt::new(max_supply),
+            owner_account_id,
+        )
+        .context("invalid argument")?;
+
+        let account_builder = AccountBuilder::new(self.rng.random())
+            .storage_mode(AccountStorageMode::Network)
+            .with_component(regulated_faucet)
             .account_type(AccountType::FungibleFaucet);
 
         // Network faucets always use Noop auth (no authentication)
