@@ -1,47 +1,31 @@
 use miden::protocol::active_account
 use miden::protocol::account_id
 use miden::protocol::active_note
-use miden::protocol::native_account
 use miden::standards::faucets
 use miden::standards::faucets::basic_fungible
 use miden::standards::faucets::network_fungible
-use miden::standards::utils::access::ownable
-use miden::standards::utils::access::pausable
+use miden::standards::access::ownable
+use miden::standards::access::pausable
 
 # CONSTANTS
 # ================================================================================================
 
 # The slot in this component's storage layout where the owner config is stored.
 # This must match the slot name used in the Rust code.
-# const OWNER_CONFIG_SLOT=word("miden::standards::utils::access::ownable::owner_config")
+# const OWNER_CONFIG_SLOT=word("miden::standards::access::ownable::owner_config")
 
 # The slot in this component's storage layout where the paused state is stored.
 # This must match the slot name used in the Rust code.
-# Using the standardized pausable slot name
-# const PAUSABLE_SLOT=word("miden::standards::utils::access::pausable::paused")
+# Using the standardized pausable slot name 
+# const PAUSABLE_SLOT=word("miden::standards::access::pausable::paused")
 
 # ERRORS
 # ===============================================================================================
 
-const ERR_ONLY_OWNER="note sender is not the owner"
+# const ERR_ONLY_OWNER="note sender is not the owner"
 
 # INTERNAL PROCEDURES
 # ================================================================================================
-
-#! Checks if the note sender is the owner of this faucet.
-#!
-#! Inputs:  []
-#! Outputs: [is_owner]
-#!
-#! Where:
-#! - is_owner is 1 if the sender is the owner, 0 otherwise.
-#!
-#! NOTE: Uses exec.ownable::is_owner to ensure it uses the same execution context
-#! and storage slot (OWNER_CONFIG_SLOT) as defined in ownable.masm.
-proc is_owner
-    exec.ownable::is_owner
-    # => [is_owner]
-end
 
 #! Checks if the faucet is not paused.
 #!
@@ -53,10 +37,7 @@ end
 #!
 #! NOTE: Uses exec.pausable::is_not_paused to ensure it uses the same execution context
 #! and storage slot (PAUSABLE_SLOT) as defined in pausable.masm.
-proc is_not_paused
-    exec.pausable::is_not_paused
-    # => []
-end
+pub use pausable::is_not_paused
 
 # PUBLIC INTERFACE
 # ================================================================================================
@@ -96,10 +77,7 @@ pub use network_fungible::get_owner
 #!
 #! Invocation: call
 pub proc distribute
-    exec.is_owner
-    # => [is_owner, amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
-
-    assert.err=ERR_ONLY_OWNER
+    exec.ownable::verify_owner
     # => [amount, tag, aux, note_type, execution_hint, RECIPIENT, pad(7)]
 
     exec.is_not_paused
@@ -127,7 +105,7 @@ end
 #!
 #! Invocation: call
 pub proc burn
-    exec.is_not_paused
+    exec.pausable::is_not_paused
     # => [pad(16)]
 
     exec.faucets::burn
@@ -179,7 +157,7 @@ pub use network_fungible::renounce_ownership
 #!
 #! Invocation: call
 pub proc pause
-    exec.ownable::only_owner
+    exec.ownable::verify_owner
     # => [pad(16)]
 
     exec.pausable::pause
@@ -198,7 +176,7 @@ end
 #!
 #! Invocation: call
 pub proc unpause
-    exec.ownable::only_owner
+    exec.ownable::verify_owner
     # => [pad(16)]
 
     exec.pausable::unpause

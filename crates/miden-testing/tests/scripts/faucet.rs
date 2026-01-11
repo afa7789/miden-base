@@ -1875,7 +1875,8 @@ async fn pausable_pause_unpause_cycle() -> anyhow::Result<()> {
     // Add unpause note to builder before building (but we already built, so we need to add it differently)
     // Since we can't modify builder after build, we'll add the note as an output from the pause transaction
     // For now, let's create a new builder for the unpause step
-    // Use faucet.clone() instead of committed_account to preserve account code
+    // Update faucet with committed account to ensure all storage (including owner) is preserved
+    faucet = mock_chain.committed_account(faucet.id())?.clone();
     let mut builder2 = MockChain::builder();
     builder2.add_account(faucet.clone())?;
     builder2.add_output_note(OutputNote::Full(unpause_note.clone()));
@@ -2151,6 +2152,150 @@ async fn pausable_is_not_paused_detection() -> anyhow::Result<()> {
             // Error is expected and validates MASM code structure
         }
     }
+
+    Ok(())
+}
+
+/// Tests that a non-owner cannot pause the faucet.
+#[tokio::test]
+async fn pausable_non_owner_cannot_pause() -> anyhow::Result<()> {
+    let mut builder = MockChain::builder();
+
+    let owner_account_id = AccountId::dummy(
+        [7; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    let non_owner_account_id = AccountId::dummy(
+        [8; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    let faucet =
+        builder.add_existing_regulated_network_faucet("NET", 1000, owner_account_id, Some(50))?;
+
+    // Create pause note script
+    let source_manager = Arc::new(DefaultSourceManager::default());
+    let pause_note_script_code = create_pause_note_script_code();
+    let pause_note_script = CodeBuilder::with_source_manager(source_manager.clone())
+        .compile_note_script(pause_note_script_code.clone())?;
+
+    // Create a note from NON-OWNER with the pause note script
+    let mut rng = RpoRandomCoin::new([Felt::from(400u32); 4].into());
+    let pause_note = NoteBuilder::new(non_owner_account_id, &mut rng)
+        .note_type(NoteType::Public)
+        .tag(NoteTag::from_account_id(faucet.id()).into())
+        .note_execution_hint(NoteExecutionHint::always())
+        .aux(ZERO)
+        .code(pause_note_script_code.clone())
+        .build()?;
+
+    builder.add_output_note(OutputNote::Full(pause_note.clone()));
+    let mock_chain = builder.build()?;
+
+    let tx_context = mock_chain
+        .build_tx_context(faucet.id(), &[pause_note.id()], &[])?
+        .add_note_script(pause_note_script.clone())
+        .with_source_manager(source_manager.clone())
+        .build()?;
+
+    let result = tx_context.execute().await;
+
+    use miden_protocol::errors::MasmError;
+    // The pause procedure uses verify_owner which uses ERR_ONLY_OWNER
+    let expected_error = MasmError::from_static_str("note sender is not the owner");
+    assert_transaction_executor_error!(result, expected_error);
+
+    Ok(())
+}
+
+/// Tests that a non-owner cannot unpause the faucet.
+#[tokio::test]
+async fn pausable_non_owner_cannot_unpause() -> anyhow::Result<()> {
+    let mut builder = MockChain::builder();
+
+    let owner_account_id = AccountId::dummy(
+        [9; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    let non_owner_account_id = AccountId::dummy(
+        [10; 15],
+        AccountIdVersion::Version0,
+        AccountType::RegularAccountImmutableCode,
+        AccountStorageMode::Private,
+    );
+
+    let faucet =
+        builder.add_existing_regulated_network_faucet("NET", 1000, owner_account_id, Some(50))?;
+
+    // First, pause the faucet as the owner
+    let source_manager = Arc::new(DefaultSourceManager::default());
+    let pause_note_script_code = create_pause_note_script_code();
+    let pause_note_script = CodeBuilder::with_source_manager(source_manager.clone())
+        .compile_note_script(pause_note_script_code.clone())?;
+
+    let mut rng_pause = RpoRandomCoin::new([Felt::from(401u32); 4].into());
+    let pause_note = NoteBuilder::new(owner_account_id, &mut rng_pause)
+        .note_type(NoteType::Public)
+        .tag(NoteTag::from_account_id(faucet.id()).into())
+        .note_execution_hint(NoteExecutionHint::always())
+        .aux(ZERO)
+        .code(pause_note_script_code.clone())
+        .build()?;
+
+    builder.add_output_note(OutputNote::Full(pause_note.clone()));
+    let mut mock_chain = builder.build()?;
+    mock_chain.prove_next_block()?;
+
+    let pause_tx_context = mock_chain
+        .build_tx_context(faucet.id(), &[pause_note.id()], &[])?
+        .add_note_script(pause_note_script.clone())
+        .with_source_manager(source_manager.clone())
+        .build()?;
+
+    let pause_executed = pause_tx_context.execute().await?;
+    mock_chain.add_pending_executed_transaction(&pause_executed)?;
+    mock_chain.prove_next_block()?;
+
+    // Now try to unpause as NON-OWNER
+    let unpause_note_script_code = create_unpause_note_script_code();
+    let unpause_note_script = CodeBuilder::with_source_manager(source_manager.clone())
+        .compile_note_script(unpause_note_script_code.clone())?;
+
+    let mut builder2 = MockChain::builder();
+    builder2.add_account(mock_chain.committed_account(faucet.id())?.clone())?;
+
+    let mut rng_unpause = RpoRandomCoin::new([Felt::from(402u32); 4].into());
+    let unpause_note = NoteBuilder::new(non_owner_account_id, &mut rng_unpause)
+        .note_type(NoteType::Public)
+        .tag(NoteTag::from_account_id(faucet.id()).into())
+        .note_execution_hint(NoteExecutionHint::always())
+        .aux(ZERO)
+        .code(unpause_note_script_code.clone())
+        .build()?;
+
+    builder2.add_output_note(OutputNote::Full(unpause_note.clone()));
+    let mock_chain2 = builder2.build()?;
+
+    let unpause_tx_context = mock_chain2
+        .build_tx_context(faucet.id(), &[unpause_note.id()], &[])?
+        .add_note_script(unpause_note_script.clone())
+        .with_source_manager(source_manager.clone())
+        .build()?;
+
+    let result = unpause_tx_context.execute().await;
+
+    use miden_protocol::errors::MasmError;
+    // The unpause procedure uses verify_owner which uses ERR_ONLY_OWNER
+    let expected_error = MasmError::from_static_str("note sender is not the owner");
+    assert_transaction_executor_error!(result, expected_error);
 
     Ok(())
 }

@@ -1,10 +1,10 @@
-# miden::standards::utils::access::pausable
+# miden::standards::access::pausable
 #
 # Provides pausable functionality for account components.
 # This module can be imported and used by any component that needs pause controls.
 #
 # Usage:
-#   use miden::standards::utils::access::pausable
+#   use miden::standards::access::pausable
 #   
 #   # In account procedures (not from note scripts):
 #   exec.pausable::is_not_paused
@@ -27,7 +27,7 @@ use miden::protocol::native_account
 
 # The slot in this component's storage layout where the paused state is stored.
 # This must match the slot name used in the Rust code.
-const PAUSABLE_SLOT=word("miden::standards::utils::access::pausable::paused")
+const PAUSABLE_SLOT=word("miden::standards::access::pausable::paused")
 
 # ERRORS
 # ================================================================================================
