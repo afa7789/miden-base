@@ -120,6 +120,15 @@ static STORAGE_SCHEMA_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     Library::read_from_bytes(bytes).expect("Shipped Storage Schema library is well-formed")
 });
 
+// Initialize the Metadata Extension library only once.
+static METADATA_EXTENSION_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+    let bytes = include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/assets/account_components/metadata/extension.masl"
+    ));
+    Library::read_from_bytes(bytes).expect("Shipped Metadata Extension library is well-formed")
+});
+
 /// Returns the Basic Wallet Library.
 pub fn basic_wallet_library() -> Library {
     BASIC_WALLET_LIBRARY.clone()
@@ -138,6 +147,11 @@ pub fn network_fungible_faucet_library() -> Library {
 /// Returns the Storage Schema Library.
 pub fn storage_schema_library() -> Library {
     STORAGE_SCHEMA_LIBRARY.clone()
+}
+
+/// Returns the Metadata Extension Library.
+pub fn metadata_extension_library() -> Library {
+    METADATA_EXTENSION_LIBRARY.clone()
 }
 
 /// Returns the ECDSA K256 Keccak Library.
