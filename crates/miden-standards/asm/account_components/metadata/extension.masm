@@ -1,0 +1,5 @@
+# Metadata Extension Component
+#
+# Re-exports the metadata extension procedures.
+
+pub use ::miden::standards::metadata::extension::get
