@@ -21,9 +21,15 @@
 
 use alloc::vec::Vec;
 
-use miden_protocol::utils::hash_string_to_word;
 use miden_protocol::Word;
-use miden_protocol::account::{AccountComponent, StorageMap, StorageSlot, StorageSlotName};
+use miden_protocol::account::{
+    AccountComponent,
+    AccountComponentMetadata,
+    StorageMap,
+    StorageSlot,
+    StorageSlotName,
+};
+use miden_protocol::utils::hash_string_to_word;
 use miden_protocol::utils::sync::LazyLock;
 
 use crate::account::components::metadata_extension_library;
@@ -38,14 +44,12 @@ pub static METADATA_EXTENSION_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::n
 });
 
 /// Pre-defined key for token/account name.
-pub static KEY_NAME: LazyLock<Word> = LazyLock::new(|| {
-    hash_string_to_word("miden::standards::metadata::extension::key::name")
-});
+pub static KEY_NAME: LazyLock<Word> =
+    LazyLock::new(|| hash_string_to_word("miden::standards::metadata::extension::key::name"));
 
 /// Pre-defined key for URI (metadata URL, IPFS hash, etc).
-pub static KEY_URI: LazyLock<Word> = LazyLock::new(|| {
-    hash_string_to_word("miden::standards::metadata::extension::key::uri")
-});
+pub static KEY_URI: LazyLock<Word> =
+    LazyLock::new(|| hash_string_to_word("miden::standards::metadata::extension::key::uri"));
 
 // METADATA EXTENSION
 // ================================================================================================
@@ -117,15 +121,16 @@ impl From<MetadataExtension> for AccountComponent {
                 .expect("metadata extension entries should not have duplicate keys")
         };
 
+        let metadata = AccountComponentMetadata::new("miden::standards::metadata::extension")
+            .with_description("Optional key-value metadata extension (name, URI, etc.)")
+            .with_supports_all_types();
+
         AccountComponent::new(
             metadata_extension_library(),
-            vec![StorageSlot::with_map(
-                MetadataExtension::slot().clone(),
-                storage_map,
-            )],
+            vec![StorageSlot::with_map(MetadataExtension::slot().clone(), storage_map)],
+            metadata,
         )
         .expect("MetadataExtension component should satisfy the requirements")
-        .with_supports_all_types()
     }
 }
 
@@ -145,9 +150,7 @@ mod tests {
         let name_value = Word::from([1u32, 2, 3, 4]);
         let uri_value = Word::from([5u32, 6, 7, 8]);
 
-        let extension = MetadataExtension::new()
-            .with_name(name_value)
-            .with_uri(uri_value);
+        let extension = MetadataExtension::new().with_name(name_value).with_uri(uri_value);
 
         let account = AccountBuilder::new([1u8; 32])
             .with_auth_component(NoAuth)
@@ -157,14 +160,10 @@ mod tests {
 
         // Verify the storage map was created
         let slot = MetadataExtension::slot();
-        let name_from_storage = account
-            .storage()
-            .get_map_item(slot, MetadataExtension::key_name())
-            .unwrap();
-        let uri_from_storage = account
-            .storage()
-            .get_map_item(slot, MetadataExtension::key_uri())
-            .unwrap();
+        let name_from_storage =
+            account.storage().get_map_item(slot, MetadataExtension::key_name()).unwrap();
+        let uri_from_storage =
+            account.storage().get_map_item(slot, MetadataExtension::key_uri()).unwrap();
 
         assert_eq!(name_from_storage, name_value);
         assert_eq!(uri_from_storage, uri_value);
@@ -182,10 +181,7 @@ mod tests {
 
         // Empty map should return empty word for any key
         let slot = MetadataExtension::slot();
-        let value = account
-            .storage()
-            .get_map_item(slot, MetadataExtension::key_name())
-            .unwrap();
+        let value = account.storage().get_map_item(slot, MetadataExtension::key_name()).unwrap();
 
         assert_eq!(value, Word::default());
     }

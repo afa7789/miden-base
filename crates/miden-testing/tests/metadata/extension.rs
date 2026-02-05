@@ -20,9 +20,7 @@ async fn metadata_extension_get_from_masm() -> anyhow::Result<()> {
     let uri_value = Word::from([5u32, 6, 7, 8]);
 
     // Create account with metadata extension
-    let extension = MetadataExtension::new()
-        .with_name(name_value)
-        .with_uri(uri_value);
+    let extension = MetadataExtension::new().with_name(name_value).with_uri(uri_value);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
@@ -60,8 +58,8 @@ async fn metadata_extension_get_from_masm() -> anyhow::Result<()> {
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
-    let tx_script = CodeBuilder::with_source_manager(source_manager.clone())
-        .compile_tx_script(tx_script)?;
+    let tx_script =
+        CodeBuilder::with_source_manager(source_manager.clone()).compile_tx_script(tx_script)?;
 
     let tx_context = TransactionContextBuilder::new(account)
         .tx_script(tx_script)
@@ -103,8 +101,8 @@ async fn metadata_extension_get_non_existent_key_returns_empty() -> anyhow::Resu
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
-    let tx_script = CodeBuilder::with_source_manager(source_manager.clone())
-        .compile_tx_script(tx_script)?;
+    let tx_script =
+        CodeBuilder::with_source_manager(source_manager.clone()).compile_tx_script(tx_script)?;
 
     let tx_context = TransactionContextBuilder::new(account)
         .tx_script(tx_script)
@@ -150,8 +148,8 @@ async fn metadata_extension_custom_key_from_masm() -> anyhow::Result<()> {
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
-    let tx_script = CodeBuilder::with_source_manager(source_manager.clone())
-        .compile_tx_script(tx_script)?;
+    let tx_script =
+        CodeBuilder::with_source_manager(source_manager.clone()).compile_tx_script(tx_script)?;
 
     let tx_context = TransactionContextBuilder::new(account)
         .tx_script(tx_script)
@@ -179,14 +177,12 @@ fn metadata_extension_with_faucet_storage() {
     // Create faucet with metadata extension
     let faucet = BasicFungibleFaucet::new(
         "TST".try_into().unwrap(),
-        8, // decimals
+        8,                    // decimals
         Felt::new(1_000_000), // max_supply
     )
     .unwrap();
 
-    let extension = MetadataExtension::new()
-        .with_name(name_value)
-        .with_uri(uri_value);
+    let extension = MetadataExtension::new().with_name(name_value).with_uri(uri_value);
 
     let account = AccountBuilder::new([1u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -198,10 +194,7 @@ fn metadata_extension_with_faucet_storage() {
         .unwrap();
 
     // Verify faucet metadata is intact
-    let faucet_metadata = account
-        .storage()
-        .get_item(BasicFungibleFaucet::metadata_slot())
-        .unwrap();
+    let faucet_metadata = account.storage().get_item(BasicFungibleFaucet::metadata_slot()).unwrap();
     assert_eq!(faucet_metadata[0], Felt::new(1_000_000)); // max_supply
     assert_eq!(faucet_metadata[1], Felt::new(8)); // decimals
 
@@ -217,4 +210,135 @@ fn metadata_extension_with_faucet_storage() {
 
     assert_eq!(name_from_storage, name_value);
     assert_eq!(uri_from_storage, uri_value);
+}
+
+/// Tests that BasicFungibleFaucet with integrated name/uri works correctly.
+/// This uses the faucet's built-in with_name() and with_uri() methods.
+#[test]
+fn faucet_with_integrated_metadata() {
+    use miden_protocol::Felt;
+    use miden_protocol::account::AccountStorageMode;
+    use miden_standards::account::faucets::BasicFungibleFaucet;
+
+    // Create metadata values
+    let name_value = Word::from([11u32, 22, 33, 44]);
+    let uri_value = Word::from([55u32, 66, 77, 88]);
+
+    // Create faucet with integrated name and uri
+    let faucet = BasicFungibleFaucet::new(
+        "INT".try_into().unwrap(),
+        6,                  // decimals
+        Felt::new(500_000), // max_supply
+    )
+    .unwrap()
+    .with_name(name_value)
+    .with_uri(uri_value);
+
+    // Verify the getters work
+    assert_eq!(faucet.name(), Some(name_value));
+    assert_eq!(faucet.uri(), Some(uri_value));
+
+    let account = AccountBuilder::new([2u8; 32])
+        .account_type(miden_protocol::account::AccountType::FungibleFaucet)
+        .storage_mode(AccountStorageMode::Public)
+        .with_auth_component(NoAuth)
+        .with_component(faucet)
+        .build()
+        .unwrap();
+
+    // Verify faucet metadata is intact
+    let faucet_metadata = account.storage().get_item(BasicFungibleFaucet::metadata_slot()).unwrap();
+    assert_eq!(faucet_metadata[0], Felt::new(500_000)); // max_supply
+    assert_eq!(faucet_metadata[1], Felt::new(6)); // decimals
+
+    // Verify extension metadata via StorageMap
+    let name_from_storage = account
+        .storage()
+        .get_map_item(BasicFungibleFaucet::extension_slot(), MetadataExtension::key_name())
+        .unwrap();
+    let uri_from_storage = account
+        .storage()
+        .get_map_item(BasicFungibleFaucet::extension_slot(), MetadataExtension::key_uri())
+        .unwrap();
+
+    assert_eq!(name_from_storage, name_value);
+    assert_eq!(uri_from_storage, uri_value);
+
+    // Verify the faucet can be recovered from the account
+    let recovered_faucet = BasicFungibleFaucet::try_from(&account).unwrap();
+    assert_eq!(recovered_faucet.name(), Some(name_value));
+    assert_eq!(recovered_faucet.uri(), Some(uri_value));
+    assert_eq!(recovered_faucet.max_supply(), Felt::new(500_000));
+    assert_eq!(recovered_faucet.decimals(), 6);
+}
+
+/// Tests that BasicFungibleFaucet metadata can be read from MASM using the faucet's get procedure.
+#[tokio::test]
+async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
+    use miden_protocol::Felt;
+    use miden_protocol::account::AccountStorageMode;
+    use miden_standards::account::faucets::BasicFungibleFaucet;
+
+    // Create metadata values
+    let name_value = Word::from([100u32, 200, 300, 400]);
+    let uri_value = Word::from([500u32, 600, 700, 800]);
+
+    // Create faucet with integrated name and uri
+    let faucet = BasicFungibleFaucet::new(
+        "MAS".try_into().unwrap(),
+        10,                 // decimals
+        Felt::new(999_999), // max_supply
+    )
+    .unwrap()
+    .with_name(name_value)
+    .with_uri(uri_value);
+
+    let account = AccountBuilder::new([3u8; 32])
+        .account_type(miden_protocol::account::AccountType::FungibleFaucet)
+        .storage_mode(AccountStorageMode::Public)
+        .with_auth_component(NoAuth)
+        .with_component(faucet)
+        .build()?;
+
+    // MASM script to read metadata via the faucet's get procedure
+    let tx_script = format!(
+        r#"
+        begin
+            # Get name via faucet's get procedure and verify
+            push.{key_name}
+            call.::miden::standards::metadata::extension::get
+            # => [NAME]
+
+            push.{expected_name}
+            assert_eqw.err="faucet name does not match expected"
+            # => []
+
+            # Get URI via faucet's get procedure and verify
+            push.{key_uri}
+            call.::miden::standards::metadata::extension::get
+            # => [URI]
+
+            push.{expected_uri}
+            assert_eqw.err="faucet uri does not match expected"
+            # => []
+        end
+        "#,
+        key_name = MetadataExtension::key_name(),
+        key_uri = MetadataExtension::key_uri(),
+        expected_name = name_value,
+        expected_uri = uri_value,
+    );
+
+    let source_manager = Arc::new(DefaultSourceManager::default());
+    let tx_script =
+        CodeBuilder::with_source_manager(source_manager.clone()).compile_tx_script(tx_script)?;
+
+    let tx_context = TransactionContextBuilder::new(account)
+        .tx_script(tx_script)
+        .with_source_manager(source_manager)
+        .build()?;
+
+    tx_context.execute().await?;
+
+    Ok(())
 }

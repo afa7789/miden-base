@@ -9,7 +9,7 @@ use miden_protocol::utils::sync::LazyLock;
 use crate::account::components::storage_schema_library;
 
 mod extension;
-pub use extension::{MetadataExtension, KEY_NAME, KEY_URI, METADATA_EXTENSION_SLOT_NAME};
+pub use extension::{KEY_NAME, KEY_URI, METADATA_EXTENSION_SLOT_NAME, MetadataExtension};
 
 pub static SCHEMA_COMMITMENT_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
     StorageSlotName::new("miden::standards::metadata::storage_schema")
