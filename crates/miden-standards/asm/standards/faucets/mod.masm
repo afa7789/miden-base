@@ -29,8 +29,8 @@ const ERR_BASIC_FUNGIBLE_BURN_WRONG_NUMBER_OF_ASSETS="burn requires exactly 1 no
 
 # Local memory: word0 and word1 of the metadata double-word, then new_token_supply when updating.
 const METADATA_WORD0_LOC=0
-const METADATA_WORD1_LOC=1
-const NEW_TOKEN_SUPPLY_LOC=2
+const METADATA_WORD1_LOC=4
+const NEW_TOKEN_SUPPLY_LOC=8
 
 # The standard slot (map) where fungible faucet metadata is stored as a double-word at index 0.
 # Word0: [token_supply, max_supply, decimals, token_symbol], Word1: [name, uri, reserved, reserved]
@@ -57,7 +57,7 @@ const METADATA_INDEX=0
 #! - the token supply after minting is greater than the maximum allowed supply.
 #!
 #! Invocation: exec
-@locals(3)
+@locals(9)
 pub proc distribute
     # Get the metadata double-word (word0 + word1) from the map at index 0.
     # ---------------------------------------------------------------------------------------------
@@ -184,6 +184,7 @@ end
 #! - the amount about to be burned is greater than the token_supply of the faucet.
 #!
 #! Invocation: call
+@locals(9)
 pub proc burn
     # Get the asset from the note.
     # ---------------------------------------------------------------------------------------------
@@ -223,14 +224,14 @@ pub proc burn
 
     padw loc_loadw_be.METADATA_WORD0_LOC
     # => [amount, pad(16), token_symbol, decimals, max_supply, token_supply]
-    dup.16 dup.0 swap
+    dup.8 dup.9 swap swap
     # => [token_supply, amount, amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
     # assert that amount <= token_supply
     lte assert.err=ERR_FAUCET_BURN_AMOUNT_EXCEEDS_TOKEN_SUPPLY
     # => [amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
-    dup.16 dup.0 swap sub
+    dup.8 sub
     # => [new_token_supply, amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
     loc_store.NEW_TOKEN_SUPPLY_LOC

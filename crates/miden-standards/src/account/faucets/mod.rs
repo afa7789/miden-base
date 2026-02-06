@@ -3,7 +3,7 @@ use alloc::string::String;
 use miden_protocol::account::StorageSlotName;
 use miden_protocol::errors::{AccountError, TokenSymbolError};
 use miden_protocol::utils::sync::LazyLock;
-use miden_protocol::{Felt, Word};
+use miden_protocol::{Felt, FieldElement, Word};
 use thiserror::Error;
 
 mod basic_fungible;
@@ -23,7 +23,7 @@ pub const METADATA_DOUBLE_WORD_INDEX: u64 = 0;
 /// Map key for the first word of the metadata double-word: key = [index, 0, 0, 0].
 pub fn metadata_map_key_word0() -> Word {
     Word::new([
-        Felt::from(METADATA_DOUBLE_WORD_INDEX),
+        Felt::new(METADATA_DOUBLE_WORD_INDEX),
         Felt::ZERO,
         Felt::ZERO,
         Felt::ZERO,
@@ -33,7 +33,7 @@ pub fn metadata_map_key_word0() -> Word {
 /// Map key for the second word of the metadata double-word: key = [index, 1, 0, 0].
 pub fn metadata_map_key_word1() -> Word {
     Word::new([
-        Felt::from(METADATA_DOUBLE_WORD_INDEX),
+        Felt::new(METADATA_DOUBLE_WORD_INDEX),
         Felt::ONE,
         Felt::ZERO,
         Felt::ZERO,
@@ -77,7 +77,7 @@ pub enum FungibleFaucetError {
 
 #[cfg(test)]
 mod tests {
-    use miden_protocol::{Felt, Word};
+    use miden_protocol::{Felt, FieldElement, Word};
 
     use super::{metadata_map_key_word0, metadata_map_key_word1, METADATA_DOUBLE_WORD_INDEX};
 
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(
             metadata_map_key_word0(),
             Word::new([
-                Felt::from(METADATA_DOUBLE_WORD_INDEX),
+                Felt::new(METADATA_DOUBLE_WORD_INDEX),
                 Felt::ZERO,
                 Felt::ZERO,
                 Felt::ZERO,
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(
             metadata_map_key_word1(),
             Word::new([
-                Felt::from(METADATA_DOUBLE_WORD_INDEX),
+                Felt::new(METADATA_DOUBLE_WORD_INDEX),
                 Felt::ONE,
                 Felt::ZERO,
                 Felt::ZERO,

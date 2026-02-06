@@ -66,6 +66,7 @@ static OWNER_CONFIG_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
 /// - [`Self::owner_config_slot`]: The owner account of this network faucet.
 ///
 /// [builder]: crate::code_builder::CodeBuilder
+#[derive(Debug)]
 pub struct NetworkFungibleFaucet {
     faucet: BasicFungibleFaucet,
     owner_account_id: AccountId,
@@ -191,6 +192,16 @@ impl NetworkFungibleFaucet {
     /// exceed [`Self::max_supply`].
     pub fn token_supply(&self) -> Felt {
         self.faucet.token_supply()
+    }
+
+    /// Returns the name metadata of the faucet.
+    pub fn name(&self) -> Felt {
+        self.faucet.name()
+    }
+
+    /// Returns the URI metadata of the faucet.
+    pub fn uri(&self) -> Felt {
+        self.faucet.uri()
     }
 
     /// Returns the owner account ID of the faucet.
@@ -320,9 +331,12 @@ pub fn create_network_fungible_faucet(
 #[cfg(test)]
 mod tests {
     use assert_matches::assert_matches;
-    use miden_protocol::account::{AccountBuilder, AccountComponent, AccountId, AccountType};
+    use miden_protocol::account::{
+        AccountBuilder, AccountComponent, AccountId, AccountIdVersion, AccountStorageMode,
+        AccountType,
+    };
     use miden_protocol::asset::TokenSymbol;
-    use miden_protocol::{Felt, Word};
+    use miden_protocol::{Felt, FieldElement};
 
     use super::{FungibleFaucetError, NetworkFungibleFaucet};
     use crate::account::auth::NoAuth;
@@ -332,7 +346,12 @@ mod tests {
         let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
         let decimals = 2u8;
         let max_supply = Felt::new(1000);
-        let owner_account_id = AccountId::new_unchecked([Felt::new(1), Felt::new(2)]);
+        let owner_account_id = AccountId::dummy(
+            [1u8; 15],
+            AccountIdVersion::Version0,
+            AccountType::RegularAccountUpdatableCode,
+            AccountStorageMode::Private,
+        );
         let seed: [u8; 32] = [1u8; 32];
 
         let network_faucet = NetworkFungibleFaucet::new(symbol, decimals, max_supply, owner_account_id)
@@ -358,7 +377,12 @@ mod tests {
     fn network_fungible_faucet_with_token_supply_succeeds_and_fails() {
         let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
         let max_supply = Felt::new(100);
-        let owner_account_id = AccountId::new_unchecked([Felt::ZERO, Felt::ONE]);
+        let owner_account_id = AccountId::dummy(
+            [2u8; 15],
+            AccountIdVersion::Version0,
+            AccountType::RegularAccountUpdatableCode,
+            AccountStorageMode::Private,
+        );
 
         let faucet = NetworkFungibleFaucet::new(symbol, 2u8, max_supply, owner_account_id)
             .expect("new should succeed")

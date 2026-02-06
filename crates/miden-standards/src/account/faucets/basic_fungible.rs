@@ -70,6 +70,7 @@ procedure_digest!(
 ///   - `name` and `uri` are optional metadata encoded as [`Felt`]s (e.g. hashes or short ids).
 ///
 /// [builder]: crate::code_builder::CodeBuilder
+#[derive(Debug)]
 pub struct BasicFungibleFaucet {
     token_supply: Felt,
     max_supply: Felt,
@@ -441,12 +442,10 @@ mod tests {
         AccountComponent,
         AccountStorageMode,
         AccountType,
-        AuthScheme,
         BasicFungibleFaucet,
         Felt,
         FungibleFaucetError,
         TokenSymbol,
-        create_basic_fungible_faucet,
         metadata_map_key_word0,
         metadata_map_key_word1,
     };
@@ -690,8 +689,8 @@ mod tests {
             .expect("with_token_supply(0) should succeed");
         assert_eq!(faucet_zero.token_supply(), Felt::ZERO);
 
-        let symbol2 = TokenSymbol::new("POL").expect("invalid token symbol");
-        let faucet_max = BasicFungibleFaucet::new(symbol2, 2u8, max_supply)
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let faucet_max = BasicFungibleFaucet::new(symbol, 2u8, max_supply)
             .expect("new should succeed")
             .with_token_supply(max_supply)
             .expect("with_token_supply(max_supply) should succeed");
