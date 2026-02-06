@@ -4,8 +4,9 @@ use miden::protocol::faucet
 use miden::protocol::native_account
 use miden::protocol::output_note
 use ::miden::protocol::asset::FUNGIBLE_ASSET_MAX_AMOUNT
+use miden::standards::data_structures::double_word_array
 
-# CONSTANTS
+# CONSTANTS
 # =================================================================================================
 
 const PRIVATE_NOTE=2
@@ -26,12 +27,15 @@ const ERR_BASIC_FUNGIBLE_BURN_WRONG_NUMBER_OF_ASSETS="burn requires exactly 1 no
 # CONSTANTS
 # =================================================================================================
 
-# The local memory address at which the metadata slot content is stored.
-const METADATA_SLOT_LOCAL=0
+# Local memory: word0 and word1 of the metadata double-word, then new_token_supply when updating.
+const METADATA_WORD0_LOC=0
+const METADATA_WORD1_LOC=1
+const NEW_TOKEN_SUPPLY_LOC=2
 
-# The standard slot where fungible faucet metadata like token symbol or decimals are stored.
-# Layout: [token_supply, max_supply, decimals, token_symbol]
+# The standard slot (map) where fungible faucet metadata is stored as a double-word at index 0.
+# Word0: [token_supply, max_supply, decimals, token_symbol], Word1: [name, uri, reserved, reserved]
 const METADATA_SLOT=word("miden::standards::fungible_faucets::metadata")
+const METADATA_INDEX=0
 
 #! Distributes freshly minted fungible assets to the provided recipient by creating a note.
 #!
@@ -53,17 +57,22 @@ const METADATA_SLOT=word("miden::standards::fungible_faucets::metadata")
 #! - the token supply after minting is greater than the maximum allowed supply.
 #!
 #! Invocation: exec
-@locals(4)
+@locals(3)
 pub proc distribute
-    # Get the configured max supply and the token supply (= current supply).
+    # Get the metadata double-word (word0 + word1) from the map at index 0.
     # ---------------------------------------------------------------------------------------------
 
-    push.METADATA_SLOT[0..2] exec.active_account::get_item
-    # => [token_symbol, decimals, max_supply, token_supply, amount, tag, note_type, RECIPIENT]
+    push.METADATA_INDEX push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [amount, tag, note_type, RECIPIENT, VALUE_0, VALUE_1]
+    # VALUE_0 = [token_supply, max_supply, decimals, token_symbol], VALUE_1 = [name, uri, reserved, reserved]
 
-    # store a copy of the current slot content for the token_supply update later
-    loc_storew_be.METADATA_SLOT_LOCAL
-    drop drop
+    loc_storew_be.METADATA_WORD1_LOC loc_storew_be.METADATA_WORD0_LOC
+    # => [amount, tag, note_type, RECIPIENT]
+
+    padw loc_loadw_be.METADATA_WORD0_LOC drop drop
+    # => [amount, tag, note_type, RECIPIENT, max_supply, token_supply]
+    swapw
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
     # Assert that minting does not violate any supply constraints.
@@ -111,14 +120,19 @@ pub proc distribute
     dup.1 add
     # => [new_token_supply, amount, tag, note_type, RECIPIENT]
 
-    padw loc_loadw_be.METADATA_SLOT_LOCAL
-    # => [[token_symbol, decimals, max_supply, token_supply], new_token_supply, amount, tag, note_type, RECIPIENT]
+    loc_store.NEW_TOKEN_SUPPLY_LOC
+    # => [amount, tag, note_type, RECIPIENT]
 
-    movup.3 drop
-    # => [[token_symbol, decimals, max_supply, new_token_supply], amount, tag, note_type, RECIPIENT]
+    padw loc_loadw_be.METADATA_WORD0_LOC drop
+    # => [amount, tag, note_type, RECIPIENT, max_supply, decimals, token_symbol]
+    loc_load.NEW_TOKEN_SUPPLY_LOC movdn.3
+    # => [amount, tag, note_type, RECIPIENT, token_symbol, decimals, max_supply, new_token_supply] = new word0
 
-    # update the metadata slot with the new supply
-    push.METADATA_SLOT[0..2] exec.native_account::set_item dropw
+    padw loc_loadw_be.METADATA_WORD1_LOC
+    # => [amount, tag, note_type, RECIPIENT, new_word0, word1]
+
+    push.METADATA_INDEX push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::set dropw dropw
     # => [amount, tag, note_type, RECIPIENT]
 
     # Mint the asset.
@@ -201,27 +215,30 @@ pub proc burn
     # Subtract burnt amount from current token_supply in storage.
     # ---------------------------------------------------------------------------------------------
 
-    push.METADATA_SLOT[0..2] exec.active_account::get_item
-    # => [token_symbol, decimals, max_supply, token_supply, amount, pad(16)]
+    push.METADATA_INDEX push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [amount, pad(16), VALUE_0, VALUE_1]
+    loc_storew_be.METADATA_WORD1_LOC loc_storew_be.METADATA_WORD0_LOC
+    # => [amount, pad(16)]
 
-    dup.4 dup.4
-    # => [token_supply, amount, token_symbol, decimals, max_supply, token_supply, amount, pad(16)]
+    padw loc_loadw_be.METADATA_WORD0_LOC
+    # => [amount, pad(16), token_symbol, decimals, max_supply, token_supply]
+    dup.16 dup.0 swap
+    # => [token_supply, amount, amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
     # assert that amount <= token_supply
     lte assert.err=ERR_FAUCET_BURN_AMOUNT_EXCEEDS_TOKEN_SUPPLY
-    # => [token_symbol, decimals, max_supply, token_supply, amount, pad(16)]
+    # => [amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
-    movup.3 movup.4
-    # => [amount, token_supply, token_symbol, decimals, max_supply, pad(16)]
+    dup.16 dup.0 swap sub
+    # => [new_token_supply, amount, pad(16), token_symbol, decimals, max_supply, token_supply]
 
-    # compute new_token_supply = token_supply - amount
-    sub
-    # => [new_token_supply, token_symbol, decimals, max_supply, pad(16)]
-
-    movdn.3
-    # => [token_symbol, decimals, max_supply, new_token_supply, pad(16)]
-
-    # update the metadata slot with the new supply
-    push.METADATA_SLOT[0..2] exec.native_account::set_item dropw
+    loc_store.NEW_TOKEN_SUPPLY_LOC
+    padw loc_loadw_be.METADATA_WORD0_LOC
+    dropw dropw dropw dropw dropw drop drop
+    loc_load.NEW_TOKEN_SUPPLY_LOC
+    padw loc_loadw_be.METADATA_WORD1_LOC
+    push.METADATA_INDEX push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::set dropw dropw
     # => [pad(16)]
 end

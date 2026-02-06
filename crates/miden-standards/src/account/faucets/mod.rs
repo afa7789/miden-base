@@ -3,6 +3,7 @@ use alloc::string::String;
 use miden_protocol::account::StorageSlotName;
 use miden_protocol::errors::{AccountError, TokenSymbolError};
 use miden_protocol::utils::sync::LazyLock;
+use miden_protocol::{Felt, Word};
 use thiserror::Error;
 
 mod basic_fungible;
@@ -15,6 +16,29 @@ static METADATA_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
     StorageSlotName::new("miden::standards::fungible_faucets::metadata")
         .expect("storage slot name should be valid")
 });
+
+/// Index of the single metadata double-word in the metadata map (double_word_array layout).
+pub const METADATA_DOUBLE_WORD_INDEX: u64 = 0;
+
+/// Map key for the first word of the metadata double-word: key = [index, 0, 0, 0].
+pub fn metadata_map_key_word0() -> Word {
+    Word::new([
+        Felt::from(METADATA_DOUBLE_WORD_INDEX),
+        Felt::ZERO,
+        Felt::ZERO,
+        Felt::ZERO,
+    ])
+}
+
+/// Map key for the second word of the metadata double-word: key = [index, 1, 0, 0].
+pub fn metadata_map_key_word1() -> Word {
+    Word::new([
+        Felt::from(METADATA_DOUBLE_WORD_INDEX),
+        Felt::ONE,
+        Felt::ZERO,
+        Felt::ZERO,
+    ])
+}
 
 // FUNGIBLE FAUCET ERROR
 // ================================================================================================

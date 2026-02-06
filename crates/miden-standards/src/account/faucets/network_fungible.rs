@@ -6,6 +6,7 @@ use miden_protocol::account::{
     AccountStorage,
     AccountStorageMode,
     AccountType,
+    StorageMap,
     StorageSlot,
     StorageSlotName,
 };
@@ -13,7 +14,12 @@ use miden_protocol::asset::TokenSymbol;
 use miden_protocol::utils::sync::LazyLock;
 use miden_protocol::{Felt, Word};
 
-use super::{BasicFungibleFaucet, FungibleFaucetError};
+use super::{
+    metadata_map_key_word0,
+    metadata_map_key_word1,
+    BasicFungibleFaucet,
+    FungibleFaucetError,
+};
 use crate::account::auth::NoAuth;
 use crate::account::components::network_fungible_faucet_library;
 use crate::account::interface::{AccountComponentInterface, AccountInterface, AccountInterfaceExt};
@@ -220,7 +226,12 @@ impl NetworkFungibleFaucet {
 
 impl From<NetworkFungibleFaucet> for AccountComponent {
     fn from(network_faucet: NetworkFungibleFaucet) -> Self {
-        let metadata_word = network_faucet.faucet.to_metadata_word();
+        let (word0, word1) = network_faucet.faucet.to_metadata_double_word();
+        let metadata_map = StorageMap::with_entries([
+            (metadata_map_key_word0(), word0),
+            (metadata_map_key_word1(), word1),
+        ])
+        .expect("metadata map keys are distinct");
 
         // Convert AccountId into its Word encoding for storage.
         let owner_account_id_word: Word = [
@@ -231,8 +242,10 @@ impl From<NetworkFungibleFaucet> for AccountComponent {
         ]
         .into();
 
-        let metadata_slot =
-            StorageSlot::with_value(NetworkFungibleFaucet::metadata_slot().clone(), metadata_word);
+        let metadata_slot = StorageSlot::with_map(
+            NetworkFungibleFaucet::metadata_slot().clone(),
+            metadata_map,
+        );
         let owner_slot = StorageSlot::with_value(
             NetworkFungibleFaucet::owner_config_slot().clone(),
             owner_account_id_word,
