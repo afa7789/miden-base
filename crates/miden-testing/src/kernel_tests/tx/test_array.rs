@@ -184,8 +184,8 @@ async fn test_double_word_array_get_and_set() -> anyhow::Result<()> {
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries([
-                (Word::from([Felt::ZERO, Felt::ZERO, Felt::ZERO, index]), initial_value_0),
-                (Word::from([Felt::ZERO, Felt::ZERO, Felt::ONE, index]), initial_value_1),
+                (Word::new([index, Felt::ZERO, Felt::ZERO, Felt::ZERO]), initial_value_0),
+                (Word::new([index, Felt::ONE, Felt::ZERO, Felt::ZERO]), initial_value_1),
             ])?,
         )],
     )?

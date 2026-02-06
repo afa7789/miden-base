@@ -316,3 +316,60 @@ pub fn create_network_fungible_faucet(
 
     Ok(account)
 }
+
+#[cfg(test)]
+mod tests {
+    use assert_matches::assert_matches;
+    use miden_protocol::account::{AccountBuilder, AccountComponent, AccountId, AccountType};
+    use miden_protocol::asset::TokenSymbol;
+    use miden_protocol::{Felt, Word};
+
+    use super::{FungibleFaucetError, NetworkFungibleFaucet};
+    use crate::account::auth::NoAuth;
+
+    #[test]
+    fn network_fungible_faucet_try_from_account_and_with_token_supply() {
+        let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
+        let decimals = 2u8;
+        let max_supply = Felt::new(1000);
+        let owner_account_id = AccountId::new_unchecked([Felt::new(1), Felt::new(2)]);
+        let seed: [u8; 32] = [1u8; 32];
+
+        let network_faucet = NetworkFungibleFaucet::new(symbol, decimals, max_supply, owner_account_id)
+            .expect("new should succeed");
+        let account = AccountBuilder::new(seed)
+            .account_type(AccountType::FungibleFaucet)
+            .with_auth_component(AccountComponent::from(NoAuth::new()))
+            .with_component(network_faucet)
+            .build_existing()
+            .expect("build should succeed");
+
+        let extracted = NetworkFungibleFaucet::try_from(account).expect("try_from should succeed");
+        assert_eq!(extracted.symbol(), symbol);
+        assert_eq!(extracted.decimals(), decimals);
+        assert_eq!(extracted.max_supply(), max_supply);
+        assert_eq!(extracted.token_supply(), Felt::ZERO);
+        assert_eq!(extracted.name(), Felt::ZERO);
+        assert_eq!(extracted.uri(), Felt::ZERO);
+        assert_eq!(extracted.owner_account_id(), owner_account_id);
+    }
+
+    #[test]
+    fn network_fungible_faucet_with_token_supply_succeeds_and_fails() {
+        let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
+        let max_supply = Felt::new(100);
+        let owner_account_id = AccountId::new_unchecked([Felt::ZERO, Felt::ONE]);
+
+        let faucet = NetworkFungibleFaucet::new(symbol, 2u8, max_supply, owner_account_id)
+            .expect("new should succeed")
+            .with_token_supply(Felt::new(50))
+            .expect("with_token_supply(50) should succeed");
+        assert_eq!(faucet.token_supply(), Felt::new(50));
+
+        let faucet_err = NetworkFungibleFaucet::new(symbol, 2u8, max_supply, owner_account_id)
+            .expect("new should succeed")
+            .with_token_supply(Felt::new(101));
+        let err = faucet_err.expect_err("with_token_supply(101) should fail");
+        assert_matches!(err, FungibleFaucetError::TokenSupplyExceedsMaxSupply { token_supply: 101, max_supply: 100 });
+    }
+}

@@ -74,3 +74,32 @@ pub enum FungibleFaucetError {
     #[error("account is not a fungible faucet account")]
     NotAFungibleFaucetAccount,
 }
+
+#[cfg(test)]
+mod tests {
+    use miden_protocol::{Felt, Word};
+
+    use super::{metadata_map_key_word0, metadata_map_key_word1, METADATA_DOUBLE_WORD_INDEX};
+
+    #[test]
+    fn metadata_map_keys_match_double_word_array_layout() {
+        assert_eq!(
+            metadata_map_key_word0(),
+            Word::new([
+                Felt::from(METADATA_DOUBLE_WORD_INDEX),
+                Felt::ZERO,
+                Felt::ZERO,
+                Felt::ZERO,
+            ])
+        );
+        assert_eq!(
+            metadata_map_key_word1(),
+            Word::new([
+                Felt::from(METADATA_DOUBLE_WORD_INDEX),
+                Felt::ONE,
+                Felt::ZERO,
+                Felt::ZERO,
+            ])
+        );
+    }
+}

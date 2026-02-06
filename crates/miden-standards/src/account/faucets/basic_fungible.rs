@@ -433,10 +433,12 @@ pub fn create_basic_fungible_faucet(
 mod tests {
     use assert_matches::assert_matches;
     use miden_protocol::account::auth::PublicKeyCommitment;
+    use miden_protocol::asset::FungibleAsset;
     use miden_protocol::{FieldElement, ONE, Word};
 
     use super::{
         AccountBuilder,
+        AccountComponent,
         AccountStorageMode,
         AccountType,
         AuthScheme,
@@ -448,13 +450,16 @@ mod tests {
         metadata_map_key_word0,
         metadata_map_key_word1,
     };
-    use crate::account::auth::{AuthFalcon512Rpo, AuthFalcon512RpoAcl};
+    use crate::account::auth::{
+        AuthFalcon512Rpo,
+        AuthFalcon512RpoAcl,
+        AuthFalcon512RpoAclConfig,
+    };
     use crate::account::wallets::BasicWallet;
 
     #[test]
     fn faucet_contract_creation() {
         let pub_key_word = Word::new([ONE; 4]);
-        let auth_scheme: AuthScheme = AuthScheme::Falcon512Rpo { pub_key: pub_key_word.into() };
 
         // we need to use an initial seed to create the wallet account
         let init_seed: [u8; 32] = [
@@ -466,17 +471,36 @@ mod tests {
         let token_symbol_string = "POL";
         let token_symbol = TokenSymbol::try_from(token_symbol_string).unwrap();
         let decimals = 2u8;
+        let name = Felt::new(0x4e41_4d45); // arbitrary metadata (e.g. name hash)
+        let uri = Felt::new(0x5552_4900);  // arbitrary metadata (e.g. uri hash)
         let storage_mode = AccountStorageMode::Private;
 
-        let faucet_account = create_basic_fungible_faucet(
-            init_seed,
+        let distribute_proc_root = BasicFungibleFaucet::distribute_digest();
+        let auth_component: AccountComponent = AuthFalcon512RpoAcl::new(
+            pub_key_word.into(),
+            AuthFalcon512RpoAclConfig::new()
+                .with_auth_trigger_procedures(vec![distribute_proc_root])
+                .with_allow_unauthorized_input_notes(true),
+        )
+        .map_err(FungibleFaucetError::AccountError)
+        .unwrap()
+        .into();
+        let faucet_component = BasicFungibleFaucet::with_metadata(
             token_symbol,
             decimals,
             max_supply,
-            storage_mode,
-            auth_scheme,
+            name,
+            uri,
         )
         .unwrap();
+        let faucet_account = AccountBuilder::new(init_seed)
+            .account_type(AccountType::FungibleFaucet)
+            .storage_mode(storage_mode)
+            .with_auth_component(auth_component)
+            .with_component(faucet_component)
+            .build()
+            .map_err(FungibleFaucetError::AccountError)
+            .unwrap();
 
         // The falcon auth component's public key should be present.
         assert_eq!(
@@ -523,7 +547,7 @@ mod tests {
             word0,
             [Felt::ZERO, Felt::new(123), Felt::new(2), token_symbol.into()].into()
         );
-        assert_eq!(word1, [Felt::ZERO, Felt::ZERO, Felt::ZERO, Felt::ZERO].into());
+        assert_eq!(word1, [name, uri, Felt::ZERO, Felt::ZERO].into());
 
         assert!(faucet_account.is_faucet());
 
@@ -534,6 +558,9 @@ mod tests {
         assert_eq!(faucet_component.symbol(), token_symbol);
         assert_eq!(faucet_component.decimals(), decimals);
         assert_eq!(faucet_component.max_supply(), max_supply);
+        assert_eq!(faucet_component.token_supply(), Felt::ZERO);
+        assert_eq!(faucet_component.name(), name);
+        assert_eq!(faucet_component.uri(), uri);
     }
 
     #[test]
@@ -560,6 +587,38 @@ mod tests {
         assert_eq!(basic_ff.symbol(), token_symbol);
         assert_eq!(basic_ff.decimals(), 10);
         assert_eq!(basic_ff.max_supply(), Felt::new(100));
+        assert_eq!(basic_ff.token_supply(), Felt::ZERO);
+        assert_eq!(basic_ff.name(), Felt::ZERO);
+        assert_eq!(basic_ff.uri(), Felt::ZERO);
+
+        // valid account built with with_metadata and with_token_supply (distinct name/uri)
+        let name = Felt::new(0x1234_5678);
+        let uri = Felt::new(0x9abc_def0);
+        let token_supply = Felt::new(50);
+        let faucet_with_metadata = BasicFungibleFaucet::with_metadata(
+            token_symbol,
+            10,
+            Felt::new(100),
+            name,
+            uri,
+        )
+        .expect("with_metadata should succeed")
+        .with_token_supply(token_supply)
+        .expect("with_token_supply should succeed");
+        let faucet_account_2 = AccountBuilder::new(mock_seed)
+            .account_type(AccountType::FungibleFaucet)
+            .with_component(faucet_with_metadata)
+            .with_auth_component(AuthFalcon512Rpo::new(mock_public_key))
+            .build_existing()
+            .expect("failed to build account");
+        let basic_ff_2 = BasicFungibleFaucet::try_from(faucet_account_2)
+            .expect("basic fungible faucet creation failed");
+        assert_eq!(basic_ff_2.symbol(), token_symbol);
+        assert_eq!(basic_ff_2.decimals(), 10);
+        assert_eq!(basic_ff_2.max_supply(), Felt::new(100));
+        assert_eq!(basic_ff_2.token_supply(), token_supply);
+        assert_eq!(basic_ff_2.name(), name);
+        assert_eq!(basic_ff_2.uri(), uri);
 
         // invalid account: basic fungible faucet component is missing
         let invalid_faucet_account = AccountBuilder::new(mock_seed)
@@ -574,6 +633,80 @@ mod tests {
             .err()
             .expect("basic fungible faucet creation should fail");
         assert_matches!(err, FungibleFaucetError::MissingBasicFungibleFaucetInterface);
+    }
+
+    #[test]
+    fn with_metadata_succeeds_and_sets_name_uri() {
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let decimals = 2u8;
+        let max_supply = Felt::new(100);
+        let name = Felt::new(0x4e41_4d45); // "NAME" as felt
+        let uri = Felt::new(0x5552_4900); // "URI\0" as felt
+
+        let faucet = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
+            .expect("with_metadata should succeed");
+        assert_eq!(faucet.token_supply(), Felt::ZERO);
+        assert_eq!(faucet.name(), name);
+        assert_eq!(faucet.uri(), uri);
+        assert_eq!(faucet.symbol(), symbol);
+        assert_eq!(faucet.decimals(), decimals);
+        assert_eq!(faucet.max_supply(), max_supply);
+    }
+
+    #[test]
+    fn with_metadata_rejects_too_many_decimals() {
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let max_supply = Felt::new(100);
+        let name = Felt::ZERO;
+        let uri = Felt::ZERO;
+        let decimals = BasicFungibleFaucet::MAX_DECIMALS + 1;
+
+        let err = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
+            .expect_err("with_metadata should fail");
+        assert_matches!(err, FungibleFaucetError::TooManyDecimals { actual, max } if actual == decimals as u64 && max == BasicFungibleFaucet::MAX_DECIMALS);
+    }
+
+    #[test]
+    fn with_metadata_rejects_max_supply_too_large() {
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let decimals = 2u8;
+        let max_supply = Felt::new(FungibleAsset::MAX_AMOUNT + 1);
+        let name = Felt::ZERO;
+        let uri = Felt::ZERO;
+
+        let err = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
+            .expect_err("with_metadata should fail");
+        assert_matches!(err, FungibleFaucetError::MaxSupplyTooLarge { actual, max } if actual == FungibleAsset::MAX_AMOUNT + 1 && max == FungibleAsset::MAX_AMOUNT);
+    }
+
+    #[test]
+    fn with_token_supply_succeeds_within_range() {
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let max_supply = Felt::new(100);
+
+        let faucet_zero = BasicFungibleFaucet::new(symbol, 2u8, max_supply)
+            .expect("new should succeed")
+            .with_token_supply(Felt::ZERO)
+            .expect("with_token_supply(0) should succeed");
+        assert_eq!(faucet_zero.token_supply(), Felt::ZERO);
+
+        let symbol2 = TokenSymbol::new("POL").expect("invalid token symbol");
+        let faucet_max = BasicFungibleFaucet::new(symbol2, 2u8, max_supply)
+            .expect("new should succeed")
+            .with_token_supply(max_supply)
+            .expect("with_token_supply(max_supply) should succeed");
+        assert_eq!(faucet_max.token_supply(), max_supply);
+    }
+
+    #[test]
+    fn with_token_supply_rejects_exceeds_max_supply() {
+        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
+        let max_supply = Felt::new(100);
+        let faucet = BasicFungibleFaucet::new(symbol, 2u8, max_supply).expect("new should succeed");
+        let token_supply = Felt::new(101);
+
+        let err = faucet.with_token_supply(token_supply).expect_err("with_token_supply(101) should fail");
+        assert_matches!(err, FungibleFaucetError::TokenSupplyExceedsMaxSupply { token_supply: ts, max_supply: ms } if ts == 101 && ms == 100);
     }
 
     /// Check that the obtaining of the basic fungible faucet procedure digests does not panic.
