@@ -28,7 +28,7 @@ use crate::account::auth::{
     AuthFalcon512RpoMultisigConfig,
     NoAuth,
 };
-use crate::account::faucets::BasicFungibleFaucet;
+use crate::account::faucets::{BasicFungibleFaucet, TokenName};
 use crate::account::interface::{
     AccountComponentInterface,
     AccountInterface,
@@ -64,6 +64,7 @@ fn test_basic_wallet_default_notes() {
                 TokenSymbol::new("POL").expect("invalid token symbol"),
                 10,
                 Felt::new(100),
+                TokenName::new("Polygon").expect("invalid token name"),
             )
             .expect("failed to create a fungible faucet component"),
         )
@@ -326,6 +327,7 @@ fn test_basic_fungible_faucet_custom_notes() {
                 TokenSymbol::new("POL").expect("invalid token symbol"),
                 10,
                 Felt::new(100),
+                TokenName::new("Polygon").expect("invalid token name"),
             )
             .expect("failed to create a fungible faucet component"),
         )

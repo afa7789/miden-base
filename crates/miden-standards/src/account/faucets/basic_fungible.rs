@@ -12,7 +12,12 @@ use miden_protocol::account::{
 use miden_protocol::asset::{FungibleAsset, TokenSymbol};
 use miden_protocol::{Felt, FieldElement, Word};
 
-use super::{metadata_map_key_word0, metadata_map_key_word1, FungibleFaucetError};
+use super::token_logo_uri::TokenLogoURI;
+use super::token_name::TokenName;
+use super::{
+    FungibleFaucetError, TOKEN_LOGO_URI_DOUBLE_WORD_INDEX_START, TOKEN_NAME_DOUBLE_WORD_INDEX,
+    double_word_map_keys, metadata_map_key_word0, metadata_map_key_word1,
+};
 use crate::account::AuthScheme;
 use crate::account::auth::{
     AuthEcdsaK256KeccakAcl,
@@ -59,15 +64,18 @@ procedure_digest!(
 ///
 /// ## Storage Layout
 ///
-/// - [`Self::metadata_slot`]: A double-word stored in a map (see
-///   `miden::standards::data_structures::double_word_array`) at index 0:
+/// All data is stored in a single map slot ([`Self::metadata_slot`]) using the double_word_array
+/// layout:
+///
+/// - **Index 0** (core metadata):
 ///   - **Word0** `[token_supply, max_supply, decimals, token_symbol]`
-///   - **Word1** `[name, uri, reserved, reserved]`
-///   - `token_supply` is the current supply of the token.
-///   - `max_supply` is the maximum supply of the token.
-///   - `decimals` are the decimals of the token.
-///   - `token_symbol` is the [`TokenSymbol`] encoded to a [`Felt`].
-///   - `name` and `uri` are optional metadata encoded as [`Felt`]s (e.g. hashes or short ids).
+///   - **Word1** `[reserved, reserved, reserved, reserved]`
+///
+/// - **Index 1** (token name):
+///   - **Word0 / Word1**: [`TokenName`] encoded as 2 words (up to 32 bytes UTF-8).
+///
+/// - **Indices 2–5** (token logo URI):
+///   - 4 double-words (8 words): [`TokenLogoURI`] encoded as 8 words (up to 128 bytes UTF-8).
 ///
 /// [builder]: crate::code_builder::CodeBuilder
 #[derive(Debug)]
@@ -76,8 +84,8 @@ pub struct BasicFungibleFaucet {
     max_supply: Felt,
     decimals: u8,
     symbol: TokenSymbol,
-    name: Felt,
-    uri: Felt,
+    name: TokenName,
+    logo_uri: Option<TokenLogoURI>,
 }
 
 impl BasicFungibleFaucet {
@@ -106,6 +114,7 @@ impl BasicFungibleFaucet {
         symbol: TokenSymbol,
         decimals: u8,
         max_supply: Felt,
+        name: TokenName,
     ) -> Result<Self, FungibleFaucetError> {
         // First check that the metadata is valid.
         if decimals > Self::MAX_DECIMALS {
@@ -125,23 +134,9 @@ impl BasicFungibleFaucet {
             max_supply,
             decimals,
             symbol,
-            name: Felt::ZERO,
-            uri: Felt::ZERO,
+            name,
+            logo_uri: None,
         })
-    }
-
-    /// Creates a new [`BasicFungibleFaucet`] with optional metadata name and URI (as felts).
-    pub fn with_metadata(
-        symbol: TokenSymbol,
-        decimals: u8,
-        max_supply: Felt,
-        name: Felt,
-        uri: Felt,
-    ) -> Result<Self, FungibleFaucetError> {
-        let mut faucet = Self::new(symbol, decimals, max_supply)?;
-        faucet.name = name;
-        faucet.uri = uri;
-        Ok(faucet)
     }
 
     /// Attempts to create a new [`BasicFungibleFaucet`] component from the associated account
@@ -186,21 +181,17 @@ impl BasicFungibleFaucet {
     /// - the token symbol encoded value exceeds the maximum value of
     ///   [`TokenSymbol::MAX_ENCODED_VALUE`].
     pub(super) fn try_from_storage(storage: &AccountStorage) -> Result<Self, FungibleFaucetError> {
+        let metadata_slot_name = BasicFungibleFaucet::metadata_slot();
+
+        // Read core metadata (index 0).
         let word0 = storage
-            .get_map_item(BasicFungibleFaucet::metadata_slot(), metadata_map_key_word0())
+            .get_map_item(metadata_slot_name, metadata_map_key_word0())
             .map_err(|err| FungibleFaucetError::StorageLookupFailed {
-                slot_name: BasicFungibleFaucet::metadata_slot().clone(),
-                source: err,
-            })?;
-        let word1 = storage
-            .get_map_item(BasicFungibleFaucet::metadata_slot(), metadata_map_key_word1())
-            .map_err(|err| FungibleFaucetError::StorageLookupFailed {
-                slot_name: BasicFungibleFaucet::metadata_slot().clone(),
+                slot_name: metadata_slot_name.clone(),
                 source: err,
             })?;
 
         let [token_supply, max_supply, decimals, token_symbol] = *word0;
-        let [name, uri, ..] = *word1;
 
         // Convert token symbol and decimals to expected types.
         let token_symbol =
@@ -211,8 +202,72 @@ impl BasicFungibleFaucet {
                 max: Self::MAX_DECIMALS,
             })?;
 
-        BasicFungibleFaucet::with_metadata(token_symbol, decimals, max_supply, name, uri)?
-            .with_token_supply(token_supply)
+        // Read token name (index 1).
+        let (name_key0, name_key1) = double_word_map_keys(TOKEN_NAME_DOUBLE_WORD_INDEX);
+        let name_word0 = storage
+            .get_map_item(metadata_slot_name, name_key0)
+            .map_err(|err| FungibleFaucetError::StorageLookupFailed {
+                slot_name: metadata_slot_name.clone(),
+                source: err,
+            })?;
+        let name_word1 = storage
+            .get_map_item(metadata_slot_name, name_key1)
+            .map_err(|err| FungibleFaucetError::StorageLookupFailed {
+                slot_name: metadata_slot_name.clone(),
+                source: err,
+            })?;
+        let name = TokenName::try_from([name_word0, name_word1])
+            .map_err(FungibleFaucetError::InvalidTokenName)?;
+
+        // Read token logo URI (indices 2–5, 4 double-words = 8 words).
+        let logo_uri = Self::read_logo_uri_from_storage(storage, metadata_slot_name)?;
+
+        let mut faucet = BasicFungibleFaucet::new(token_symbol, decimals, max_supply, name)?;
+        faucet.logo_uri = logo_uri;
+        faucet.with_token_supply(token_supply)
+    }
+
+    /// Reads a [`TokenLogoURI`] from storage at indices 2–5. Returns `None` if all words are
+    /// zero (no URI stored).
+    fn read_logo_uri_from_storage(
+        storage: &AccountStorage,
+        slot_name: &StorageSlotName,
+    ) -> Result<Option<TokenLogoURI>, FungibleFaucetError> {
+        let mut uri_words = [Word::default(); 8];
+        let mut all_zero = true;
+
+        for i in 0..4u64 {
+            let index = TOKEN_LOGO_URI_DOUBLE_WORD_INDEX_START + i;
+            let (key0, key1) = double_word_map_keys(index);
+
+            let w0 = storage.get_map_item(slot_name, key0).map_err(|err| {
+                FungibleFaucetError::StorageLookupFailed {
+                    slot_name: slot_name.clone(),
+                    source: err,
+                }
+            })?;
+            let w1 = storage.get_map_item(slot_name, key1).map_err(|err| {
+                FungibleFaucetError::StorageLookupFailed {
+                    slot_name: slot_name.clone(),
+                    source: err,
+                }
+            })?;
+
+            uri_words[i as usize * 2] = w0;
+            uri_words[i as usize * 2 + 1] = w1;
+
+            if w0 != Word::default() || w1 != Word::default() {
+                all_zero = false;
+            }
+        }
+
+        if all_zero {
+            return Ok(None);
+        }
+
+        let uri = TokenLogoURI::try_from(uri_words)
+            .map_err(FungibleFaucetError::InvalidTokenLogoURI)?;
+        Ok(Some(uri))
     }
 
     // PUBLIC ACCESSORS
@@ -248,14 +303,14 @@ impl BasicFungibleFaucet {
         self.token_supply
     }
 
-    /// Returns the name metadata (e.g. hash or id) of the token.
-    pub fn name(&self) -> Felt {
-        self.name
+    /// Returns the token name.
+    pub fn name(&self) -> &TokenName {
+        &self.name
     }
 
-    /// Returns the URI metadata (e.g. hash or id) of the token.
-    pub fn uri(&self) -> Felt {
-        self.uri
+    /// Returns the token logo URI, if set.
+    pub fn logo_uri(&self) -> Option<&TokenLogoURI> {
+        self.logo_uri.as_ref()
     }
 
     /// Returns the digest of the `distribute` account procedure.
@@ -268,23 +323,44 @@ impl BasicFungibleFaucet {
         *BASIC_FUNGIBLE_FAUCET_BURN
     }
 
-    /// Returns the metadata as two words (double-word layout for the map slot at index 0).
-    /// Word0: [token_supply, max_supply, decimals, token_symbol]
-    /// Word1: [name, uri, reserved, reserved]
-    pub(super) fn to_metadata_double_word(&self) -> (Word, Word) {
+    /// Returns all storage map entries for this faucet's metadata.
+    ///
+    /// This produces entries for:
+    /// - Index 0: core metadata (symbol, decimals, supply)
+    /// - Index 1: token name
+    /// - Indices 2–5: token logo URI (if set)
+    pub(super) fn to_storage_map_entries(&self) -> alloc::vec::Vec<(Word, Word)> {
+        let mut entries = alloc::vec::Vec::new();
+
+        // Index 0: core metadata.
         let word0 = Word::new([
             self.token_supply,
             self.max_supply,
             Felt::from(self.decimals),
             Felt::from(self.symbol),
         ]);
-        let word1 = Word::new([
-            self.name,
-            self.uri,
-            Felt::ZERO,
-            Felt::ZERO,
-        ]);
-        (word0, word1)
+        let word1 = Word::default(); // reserved
+        entries.push((metadata_map_key_word0(), word0));
+        entries.push((metadata_map_key_word1(), word1));
+
+        // Index 1: token name.
+        let [name_w0, name_w1] = *self.name.words();
+        let (name_key0, name_key1) = double_word_map_keys(TOKEN_NAME_DOUBLE_WORD_INDEX);
+        entries.push((name_key0, name_w0));
+        entries.push((name_key1, name_w1));
+
+        // Indices 2–5: token logo URI (if set).
+        if let Some(ref uri) = self.logo_uri {
+            let uri_words = uri.words();
+            for i in 0..4u64 {
+                let index = TOKEN_LOGO_URI_DOUBLE_WORD_INDEX_START + i;
+                let (key0, key1) = double_word_map_keys(index);
+                entries.push((key0, uri_words[i as usize * 2]));
+                entries.push((key1, uri_words[i as usize * 2 + 1]));
+            }
+        }
+
+        entries
     }
 
     // MUTATORS
@@ -308,16 +384,19 @@ impl BasicFungibleFaucet {
 
         Ok(self)
     }
+
+    /// Sets the token logo URI.
+    pub fn with_logo_uri(mut self, logo_uri: TokenLogoURI) -> Self {
+        self.logo_uri = Some(logo_uri);
+        self
+    }
 }
 
 impl From<BasicFungibleFaucet> for AccountComponent {
     fn from(faucet: BasicFungibleFaucet) -> Self {
-        let (word0, word1) = faucet.to_metadata_double_word();
-        let metadata_map = StorageMap::with_entries([
-            (metadata_map_key_word0(), word0),
-            (metadata_map_key_word1(), word1),
-        ])
-        .expect("metadata map keys are distinct");
+        let entries = faucet.to_storage_map_entries();
+        let metadata_map =
+            StorageMap::with_entries(entries).expect("metadata map keys are distinct");
         let storage_slot = StorageSlot::with_map(
             BasicFungibleFaucet::metadata_slot().clone(),
             metadata_map,
@@ -370,6 +449,7 @@ pub fn create_basic_fungible_faucet(
     symbol: TokenSymbol,
     decimals: u8,
     max_supply: Felt,
+    name: TokenName,
     account_storage_mode: AccountStorageMode,
     auth_scheme: AuthScheme,
 ) -> Result<Account, FungibleFaucetError> {
@@ -420,7 +500,7 @@ pub fn create_basic_fungible_faucet(
         .account_type(AccountType::FungibleFaucet)
         .storage_mode(account_storage_mode)
         .with_auth_component(auth_component)
-        .with_component(BasicFungibleFaucet::new(symbol, decimals, max_supply)?)
+        .with_component(BasicFungibleFaucet::new(symbol, decimals, max_supply, name)?)
         .build()
         .map_err(FungibleFaucetError::AccountError)?;
 
@@ -432,6 +512,8 @@ pub fn create_basic_fungible_faucet(
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use assert_matches::assert_matches;
     use miden_protocol::account::auth::PublicKeyCommitment;
     use miden_protocol::asset::FungibleAsset;
@@ -445,15 +527,18 @@ mod tests {
         BasicFungibleFaucet,
         Felt,
         FungibleFaucetError,
+        TokenLogoURI,
+        TokenName,
         TokenSymbol,
+        double_word_map_keys,
         metadata_map_key_word0,
-        metadata_map_key_word1,
     };
     use crate::account::auth::{
         AuthFalcon512Rpo,
         AuthFalcon512RpoAcl,
         AuthFalcon512RpoAclConfig,
     };
+    use crate::account::faucets::TOKEN_NAME_DOUBLE_WORD_INDEX;
     use crate::account::wallets::BasicWallet;
 
     #[test]
@@ -470,8 +555,8 @@ mod tests {
         let token_symbol_string = "POL";
         let token_symbol = TokenSymbol::try_from(token_symbol_string).unwrap();
         let decimals = 2u8;
-        let name = Felt::new(0x4e41_4d45); // arbitrary metadata (e.g. name hash)
-        let uri = Felt::new(0x5552_4900);  // arbitrary metadata (e.g. uri hash)
+        let name = TokenName::new("Polygon").unwrap();
+        let logo_uri = TokenLogoURI::new("https://example.com/pol.png").unwrap();
         let storage_mode = AccountStorageMode::Private;
 
         let distribute_proc_root = BasicFungibleFaucet::distribute_digest();
@@ -484,14 +569,14 @@ mod tests {
         .map_err(FungibleFaucetError::AccountError)
         .unwrap()
         .into();
-        let faucet_component = BasicFungibleFaucet::with_metadata(
+        let faucet_component = BasicFungibleFaucet::new(
             token_symbol,
             decimals,
             max_supply,
             name,
-            uri,
         )
-        .unwrap();
+        .unwrap()
+        .with_logo_uri(logo_uri);
         let faucet_account = AccountBuilder::new(init_seed)
             .account_type(AccountType::FungibleFaucet)
             .storage_mode(storage_mode)
@@ -533,23 +618,30 @@ mod tests {
             distribute_root
         );
 
-        // Check that faucet metadata (double-word in map at index 0) was initialized.
+        // Check that faucet core metadata (index 0 word0) was initialized.
         let word0 = faucet_account
             .storage()
             .get_map_item(BasicFungibleFaucet::metadata_slot(), metadata_map_key_word0())
-            .unwrap();
-        let word1 = faucet_account
-            .storage()
-            .get_map_item(BasicFungibleFaucet::metadata_slot(), metadata_map_key_word1())
             .unwrap();
         assert_eq!(
             word0,
             [Felt::ZERO, Felt::new(123), Felt::new(2), token_symbol.into()].into()
         );
-        assert_eq!(word1, [name, uri, Felt::ZERO, Felt::ZERO].into());
+
+        // Check that token name (index 1) was stored.
+        let (name_key0, name_key1) = double_word_map_keys(TOKEN_NAME_DOUBLE_WORD_INDEX);
+        let stored_name_w0 = faucet_account
+            .storage()
+            .get_map_item(BasicFungibleFaucet::metadata_slot(), name_key0)
+            .unwrap();
+        let stored_name_w1 = faucet_account
+            .storage()
+            .get_map_item(BasicFungibleFaucet::metadata_slot(), name_key1)
+            .unwrap();
+        let stored_name = TokenName::try_from([stored_name_w0, stored_name_w1]).unwrap();
+        assert_eq!(stored_name.to_string(), "Polygon");
 
         assert!(faucet_account.is_faucet());
-
         assert_eq!(faucet_account.account_type(), AccountType::FungibleFaucet);
 
         // Verify the faucet can be extracted and has correct metadata
@@ -558,8 +650,11 @@ mod tests {
         assert_eq!(faucet_component.decimals(), decimals);
         assert_eq!(faucet_component.max_supply(), max_supply);
         assert_eq!(faucet_component.token_supply(), Felt::ZERO);
-        assert_eq!(faucet_component.name(), name);
-        assert_eq!(faucet_component.uri(), uri);
+        assert_eq!(faucet_component.name().to_string(), "Polygon");
+        assert_eq!(
+            faucet_component.logo_uri().unwrap().to_string(),
+            "https://example.com/pol.png"
+        );
     }
 
     #[test]
@@ -569,12 +664,14 @@ mod tests {
         let mock_public_key = PublicKeyCommitment::from(mock_word);
         let mock_seed = mock_word.as_bytes();
 
+        let name = TokenName::new("Polygon").unwrap();
+
         // valid account
         let token_symbol = TokenSymbol::new("POL").expect("invalid token symbol");
         let faucet_account = AccountBuilder::new(mock_seed)
             .account_type(AccountType::FungibleFaucet)
             .with_component(
-                BasicFungibleFaucet::new(token_symbol, 10, Felt::new(100))
+                BasicFungibleFaucet::new(token_symbol, 10, Felt::new(100), name)
                     .expect("failed to create a fungible faucet component"),
             )
             .with_auth_component(AuthFalcon512Rpo::new(mock_public_key))
@@ -587,26 +684,26 @@ mod tests {
         assert_eq!(basic_ff.decimals(), 10);
         assert_eq!(basic_ff.max_supply(), Felt::new(100));
         assert_eq!(basic_ff.token_supply(), Felt::ZERO);
-        assert_eq!(basic_ff.name(), Felt::ZERO);
-        assert_eq!(basic_ff.uri(), Felt::ZERO);
+        assert_eq!(basic_ff.name().to_string(), "Polygon");
+        assert!(basic_ff.logo_uri().is_none());
 
-        // valid account built with with_metadata and with_token_supply (distinct name/uri)
-        let name = Felt::new(0x1234_5678);
-        let uri = Felt::new(0x9abc_def0);
+        // valid account built with with_logo_uri and with_token_supply
+        let name2 = TokenName::new("My Token").unwrap();
+        let logo_uri = TokenLogoURI::new("https://example.com/logo.png").unwrap();
         let token_supply = Felt::new(50);
-        let faucet_with_metadata = BasicFungibleFaucet::with_metadata(
+        let faucet_with_uri = BasicFungibleFaucet::new(
             token_symbol,
             10,
             Felt::new(100),
-            name,
-            uri,
+            name2,
         )
-        .expect("with_metadata should succeed")
+        .expect("new should succeed")
+        .with_logo_uri(logo_uri)
         .with_token_supply(token_supply)
         .expect("with_token_supply should succeed");
         let faucet_account_2 = AccountBuilder::new(mock_seed)
             .account_type(AccountType::FungibleFaucet)
-            .with_component(faucet_with_metadata)
+            .with_component(faucet_with_uri)
             .with_auth_component(AuthFalcon512Rpo::new(mock_public_key))
             .build_existing()
             .expect("failed to build account");
@@ -616,8 +713,11 @@ mod tests {
         assert_eq!(basic_ff_2.decimals(), 10);
         assert_eq!(basic_ff_2.max_supply(), Felt::new(100));
         assert_eq!(basic_ff_2.token_supply(), token_supply);
-        assert_eq!(basic_ff_2.name(), name);
-        assert_eq!(basic_ff_2.uri(), uri);
+        assert_eq!(basic_ff_2.name().to_string(), "My Token");
+        assert_eq!(
+            basic_ff_2.logo_uri().unwrap().to_string(),
+            "https://example.com/logo.png"
+        );
 
         // invalid account: basic fungible faucet component is missing
         let invalid_faucet_account = AccountBuilder::new(mock_seed)
@@ -635,46 +735,26 @@ mod tests {
     }
 
     #[test]
-    fn with_metadata_succeeds_and_sets_name_uri() {
-        let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
-        let decimals = 2u8;
-        let max_supply = Felt::new(100);
-        let name = Felt::new(0x4e41_4d45); // "NAME" as felt
-        let uri = Felt::new(0x5552_4900); // "URI\0" as felt
-
-        let faucet = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
-            .expect("with_metadata should succeed");
-        assert_eq!(faucet.token_supply(), Felt::ZERO);
-        assert_eq!(faucet.name(), name);
-        assert_eq!(faucet.uri(), uri);
-        assert_eq!(faucet.symbol(), symbol);
-        assert_eq!(faucet.decimals(), decimals);
-        assert_eq!(faucet.max_supply(), max_supply);
-    }
-
-    #[test]
-    fn with_metadata_rejects_too_many_decimals() {
+    fn new_rejects_too_many_decimals() {
         let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
         let max_supply = Felt::new(100);
-        let name = Felt::ZERO;
-        let uri = Felt::ZERO;
+        let name = TokenName::new("Polygon").unwrap();
         let decimals = BasicFungibleFaucet::MAX_DECIMALS + 1;
 
-        let err = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
-            .expect_err("with_metadata should fail");
+        let err = BasicFungibleFaucet::new(symbol, decimals, max_supply, name)
+            .expect_err("should fail");
         assert_matches!(err, FungibleFaucetError::TooManyDecimals { actual, max } if actual == decimals as u64 && max == BasicFungibleFaucet::MAX_DECIMALS);
     }
 
     #[test]
-    fn with_metadata_rejects_max_supply_too_large() {
+    fn new_rejects_max_supply_too_large() {
         let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
         let decimals = 2u8;
         let max_supply = Felt::new(FungibleAsset::MAX_AMOUNT + 1);
-        let name = Felt::ZERO;
-        let uri = Felt::ZERO;
+        let name = TokenName::new("Polygon").unwrap();
 
-        let err = BasicFungibleFaucet::with_metadata(symbol, decimals, max_supply, name, uri)
-            .expect_err("with_metadata should fail");
+        let err = BasicFungibleFaucet::new(symbol, decimals, max_supply, name)
+            .expect_err("should fail");
         assert_matches!(err, FungibleFaucetError::MaxSupplyTooLarge { actual, max } if actual == FungibleAsset::MAX_AMOUNT + 1 && max == FungibleAsset::MAX_AMOUNT);
     }
 
@@ -682,15 +762,17 @@ mod tests {
     fn with_token_supply_succeeds_within_range() {
         let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
         let max_supply = Felt::new(100);
+        let name = TokenName::new("Polygon").unwrap();
 
-        let faucet_zero = BasicFungibleFaucet::new(symbol, 2u8, max_supply)
+        let faucet_zero = BasicFungibleFaucet::new(symbol, 2u8, max_supply, name)
             .expect("new should succeed")
             .with_token_supply(Felt::ZERO)
             .expect("with_token_supply(0) should succeed");
         assert_eq!(faucet_zero.token_supply(), Felt::ZERO);
 
         let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
-        let faucet_max = BasicFungibleFaucet::new(symbol, 2u8, max_supply)
+        let name = TokenName::new("Polygon").unwrap();
+        let faucet_max = BasicFungibleFaucet::new(symbol, 2u8, max_supply, name)
             .expect("new should succeed")
             .with_token_supply(max_supply)
             .expect("with_token_supply(max_supply) should succeed");
@@ -701,7 +783,8 @@ mod tests {
     fn with_token_supply_rejects_exceeds_max_supply() {
         let symbol = TokenSymbol::new("POL").expect("invalid token symbol");
         let max_supply = Felt::new(100);
-        let faucet = BasicFungibleFaucet::new(symbol, 2u8, max_supply).expect("new should succeed");
+        let name = TokenName::new("Polygon").unwrap();
+        let faucet = BasicFungibleFaucet::new(symbol, 2u8, max_supply, name).expect("new should succeed");
         let token_supply = Felt::new(101);
 
         let err = faucet.with_token_supply(token_supply).expect_err("with_token_supply(101) should fail");
@@ -713,5 +796,30 @@ mod tests {
     fn get_faucet_procedures() {
         let _distribute_digest = BasicFungibleFaucet::distribute_digest();
         let _burn_digest = BasicFungibleFaucet::burn_digest();
+    }
+
+    #[test]
+    fn faucet_without_logo_uri_roundtrips() {
+        let mock_word = Word::from([0, 1, 2, 3u32]);
+        let mock_public_key = PublicKeyCommitment::from(mock_word);
+        let mock_seed = mock_word.as_bytes();
+
+        let token_symbol = TokenSymbol::new("ETH").expect("invalid token symbol");
+        let name = TokenName::new("Ether").unwrap();
+
+        let faucet = BasicFungibleFaucet::new(token_symbol, 8, Felt::new(1000), name)
+            .expect("new should succeed");
+        assert!(faucet.logo_uri().is_none());
+
+        let account = AccountBuilder::new(mock_seed)
+            .account_type(AccountType::FungibleFaucet)
+            .with_component(faucet)
+            .with_auth_component(AuthFalcon512Rpo::new(mock_public_key))
+            .build_existing()
+            .expect("failed to build account");
+
+        let extracted = BasicFungibleFaucet::try_from(account).unwrap();
+        assert_eq!(extracted.name().to_string(), "Ether");
+        assert!(extracted.logo_uri().is_none());
     }
 }

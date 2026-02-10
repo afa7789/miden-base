@@ -47,7 +47,9 @@ use miden_protocol::testing::account_id::ACCOUNT_ID_NATIVE_ASSET_FAUCET;
 use miden_protocol::testing::random_signer::RandomBlockSigner;
 use miden_protocol::transaction::{OrderedTransactionHeaders, OutputNote, TransactionKernel};
 use miden_protocol::{Felt, MAX_OUTPUT_NOTES_PER_BATCH, Word};
-use miden_standards::account::faucets::{BasicFungibleFaucet, NetworkFungibleFaucet};
+use miden_standards::account::faucets::{
+    BasicFungibleFaucet, NetworkFungibleFaucet, TokenName,
+};
 use miden_standards::account::wallets::BasicWallet;
 use miden_standards::note::{P2idNote, P2ideNote, SwapNote};
 use miden_standards::testing::account_component::MockAccountComponent;
@@ -311,8 +313,11 @@ impl MockChainBuilder {
         let max_supply_felt = max_supply.try_into().map_err(|_| {
             anyhow::anyhow!("max supply value cannot be converted to Felt: {max_supply}")
         })?;
+        let symbol_str = token_symbol.to_string().context("failed to decode token symbol")?;
+        let name = TokenName::new(&symbol_str)
+            .context("failed to create TokenName from symbol")?;
         let basic_faucet =
-            BasicFungibleFaucet::new(token_symbol, DEFAULT_FAUCET_DECIMALS, max_supply_felt)
+            BasicFungibleFaucet::new(token_symbol, DEFAULT_FAUCET_DECIMALS, max_supply_felt, name)
                 .context("failed to create BasicFungibleFaucet")?;
 
         let account_builder = AccountBuilder::new(self.rng.random())
@@ -340,9 +345,12 @@ impl MockChainBuilder {
             .map_err(|err| anyhow::anyhow!("failed to convert token_supply to felt: {err}"))?;
         let token_symbol =
             TokenSymbol::new(token_symbol).context("failed to create token symbol")?;
+        let symbol_str = token_symbol.to_string().context("failed to decode token symbol")?;
+        let name = TokenName::new(&symbol_str)
+            .context("failed to create TokenName from symbol")?;
 
         let basic_faucet =
-            BasicFungibleFaucet::new(token_symbol, DEFAULT_FAUCET_DECIMALS, max_supply)
+            BasicFungibleFaucet::new(token_symbol, DEFAULT_FAUCET_DECIMALS, max_supply, name)
                 .and_then(|fungible_faucet| fungible_faucet.with_token_supply(token_supply))
                 .context("failed to create basic fungible faucet")?;
 
@@ -370,11 +378,15 @@ impl MockChainBuilder {
             .map_err(|err| anyhow::anyhow!("failed to convert token_supply to felt: {err}"))?;
         let token_symbol =
             TokenSymbol::new(token_symbol).context("failed to create token symbol")?;
+        let symbol_str = token_symbol.to_string().context("failed to decode token symbol")?;
+        let name = TokenName::new(&symbol_str)
+            .context("failed to create TokenName from symbol")?;
 
         let network_faucet = NetworkFungibleFaucet::new(
             token_symbol,
             DEFAULT_FAUCET_DECIMALS,
             max_supply,
+            name,
             owner_account_id,
         )
         .and_then(|fungible_faucet| fungible_faucet.with_token_supply(token_supply))

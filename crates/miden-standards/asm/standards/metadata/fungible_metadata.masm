@@ -1,0 +1,196 @@
+# Fungible faucet metadata getters.
+#
+# This module provides read-only access to the metadata stored in a fungible faucet's
+# storage map using the double_word_array layout.
+#
+# All metadata resides in a single map slot under the double_word_array convention:
+#
+# Index 0 — Core Metadata:
+#   Word0: [token_supply, max_supply, decimals, token_symbol]
+#   Word1: [reserved, reserved, reserved, reserved]
+#
+# Index 1 — Token Name:
+#   2 Words (8 felts = 32 bytes of UTF-8, zero-padded)
+#
+# Indices 2–5 — Token Logo URI:
+#   4 double-words (8 Words = 32 felts = 128 bytes of UTF-8, zero-padded)
+
+use miden::standards::data_structures::double_word_array
+
+# CONSTANTS
+# =================================================================================================
+
+# The standard slot (map) where fungible faucet metadata is stored as double-words.
+const METADATA_SLOT=word("miden::standards::fungible_faucets::metadata")
+
+# Double-word indices.
+const IDX_CORE=0
+const IDX_NAME=1
+const IDX_LOGO_URI_0=2
+const IDX_LOGO_URI_1=3
+const IDX_LOGO_URI_2=4
+const IDX_LOGO_URI_3=5
+
+# CORE METADATA GETTERS
+# =================================================================================================
+
+#! Returns the current token supply.
+#!
+#! Inputs:  []
+#! Outputs: [token_supply]
+#!
+#! Invocation: exec
+pub proc get_token_supply
+    push.IDX_CORE push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [VALUE_0, VALUE_1]
+    # VALUE_0 = [token_supply, max_supply, decimals, token_symbol]
+
+    # Drop VALUE_1 (reserved, on top of stack).
+    dropw
+    # => [token_symbol, decimals, max_supply, token_supply]
+
+    drop drop drop
+    # => [token_supply]
+end
+
+#! Returns the maximum token supply.
+#!
+#! Inputs:  []
+#! Outputs: [max_supply]
+#!
+#! Invocation: exec
+pub proc get_max_supply
+    push.IDX_CORE push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [VALUE_0, VALUE_1]
+
+    dropw
+    # => [token_symbol, decimals, max_supply, token_supply]
+
+    drop drop
+    # => [max_supply, token_supply]
+
+    swap drop
+    # => [max_supply]
+end
+
+#! Returns the token decimals.
+#!
+#! Inputs:  []
+#! Outputs: [decimals]
+#!
+#! Invocation: exec
+pub proc get_decimals
+    push.IDX_CORE push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [VALUE_0, VALUE_1]
+
+    dropw
+    # => [token_symbol, decimals, max_supply, token_supply]
+
+    drop
+    # => [decimals, max_supply, token_supply]
+
+    movdn.2 drop drop
+    # => [decimals]
+end
+
+#! Returns the token symbol.
+#!
+#! Inputs:  []
+#! Outputs: [token_symbol]
+#!
+#! Invocation: exec
+pub proc get_token_symbol
+    push.IDX_CORE push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [VALUE_0, VALUE_1]
+
+    dropw
+    # => [token_symbol, decimals, max_supply, token_supply]
+
+    movdn.3 drop drop drop
+    # => [token_symbol]
+end
+
+# EXTENDED METADATA GETTERS
+# =================================================================================================
+
+#! Returns the token name as 2 Words (up to 32 bytes of UTF-8, zero-padded).
+#!
+#! Inputs:  []
+#! Outputs: [NAME_WORD0, NAME_WORD1]
+#!
+#! Invocation: exec
+pub proc get_token_name
+    push.IDX_NAME push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => [NAME_WORD0, NAME_WORD1]
+end
+
+#! Returns the token logo URI as 8 Words (up to 128 bytes of UTF-8, zero-padded).
+#!
+#! Reads 4 consecutive double-words from indices 2–5 and returns all 8 Words.
+#!
+#! Inputs:  []
+#! Outputs: [URI_W0, URI_W1, URI_W2, URI_W3, URI_W4, URI_W5, URI_W6, URI_W7]
+#!
+#! Invocation: exec
+@locals(32)
+pub proc get_token_logo_uri
+    # Read index 2 (URI words 0–1).
+    push.IDX_LOGO_URI_0 push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    loc_storew_be.4 loc_storew_be.0
+
+    # Read index 3 (URI words 2–3).
+    push.IDX_LOGO_URI_1 push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    loc_storew_be.12 loc_storew_be.8
+
+    # Read index 4 (URI words 4–5).
+    push.IDX_LOGO_URI_2 push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    loc_storew_be.20 loc_storew_be.16
+
+    # Read index 5 (URI words 6–7).
+    push.IDX_LOGO_URI_3 push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    loc_storew_be.28 loc_storew_be.24
+
+    # Load all 8 words in order. First pushed ends up deepest.
+    padw loc_loadw_be.0     # URI_W0
+    padw loc_loadw_be.4     # URI_W1
+    padw loc_loadw_be.8     # URI_W2
+    padw loc_loadw_be.12    # URI_W3
+    padw loc_loadw_be.16    # URI_W4
+    padw loc_loadw_be.20    # URI_W5
+    padw loc_loadw_be.24    # URI_W6
+    padw loc_loadw_be.28    # URI_W7
+    # => [URI_W0, URI_W1, URI_W2, URI_W3, URI_W4, URI_W5, URI_W6, URI_W7]
+end
+
+#! Checks whether a token logo URI is set.
+#!
+#! Returns 1 if any felt in the first double-word of the URI (index 2) is non-zero,
+#! 0 if all felts are zero (no URI stored).
+#!
+#! Inputs:  []
+#! Outputs: [bool]
+#!
+#! Invocation: exec
+pub proc has_logo_uri
+    push.IDX_LOGO_URI_0 push.METADATA_SLOT[0] push.METADATA_SLOT[1]
+    exec.double_word_array::get
+    # => 8 felts from index 2
+
+    neq.0 swap neq.0 or
+    swap neq.0 or
+    swap neq.0 or
+    swap neq.0 or
+    swap neq.0 or
+    swap neq.0 or
+    swap neq.0 or
+    # => [bool]
+end

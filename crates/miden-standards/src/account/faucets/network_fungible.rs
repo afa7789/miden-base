@@ -14,12 +14,9 @@ use miden_protocol::asset::TokenSymbol;
 use miden_protocol::utils::sync::LazyLock;
 use miden_protocol::{Felt, Word};
 
-use super::{
-    metadata_map_key_word0,
-    metadata_map_key_word1,
-    BasicFungibleFaucet,
-    FungibleFaucetError,
-};
+use super::token_logo_uri::TokenLogoURI;
+use super::token_name::TokenName;
+use super::{BasicFungibleFaucet, FungibleFaucetError};
 use crate::account::auth::NoAuth;
 use crate::account::components::network_fungible_faucet_library;
 use crate::account::interface::{AccountComponentInterface, AccountInterface, AccountInterfaceExt};
@@ -96,10 +93,11 @@ impl NetworkFungibleFaucet {
         symbol: TokenSymbol,
         decimals: u8,
         max_supply: Felt,
+        name: TokenName,
         owner_account_id: AccountId,
     ) -> Result<Self, FungibleFaucetError> {
         // Create the basic fungible faucet (this validates the metadata)
-        let faucet = BasicFungibleFaucet::new(symbol, decimals, max_supply)?;
+        let faucet = BasicFungibleFaucet::new(symbol, decimals, max_supply, name)?;
 
         Ok(Self { faucet, owner_account_id })
     }
@@ -194,14 +192,14 @@ impl NetworkFungibleFaucet {
         self.faucet.token_supply()
     }
 
-    /// Returns the name metadata of the faucet.
-    pub fn name(&self) -> Felt {
+    /// Returns the token name.
+    pub fn name(&self) -> &TokenName {
         self.faucet.name()
     }
 
-    /// Returns the URI metadata of the faucet.
-    pub fn uri(&self) -> Felt {
-        self.faucet.uri()
+    /// Returns the token logo URI, if set.
+    pub fn logo_uri(&self) -> Option<&TokenLogoURI> {
+        self.faucet.logo_uri()
     }
 
     /// Returns the owner account ID of the faucet.
@@ -233,16 +231,19 @@ impl NetworkFungibleFaucet {
 
         Ok(self)
     }
+
+    /// Sets the token logo URI.
+    pub fn with_logo_uri(mut self, logo_uri: TokenLogoURI) -> Self {
+        self.faucet = self.faucet.with_logo_uri(logo_uri);
+        self
+    }
 }
 
 impl From<NetworkFungibleFaucet> for AccountComponent {
     fn from(network_faucet: NetworkFungibleFaucet) -> Self {
-        let (word0, word1) = network_faucet.faucet.to_metadata_double_word();
-        let metadata_map = StorageMap::with_entries([
-            (metadata_map_key_word0(), word0),
-            (metadata_map_key_word1(), word1),
-        ])
-        .expect("metadata map keys are distinct");
+        let entries = network_faucet.faucet.to_storage_map_entries();
+        let metadata_map =
+            StorageMap::with_entries(entries).expect("metadata map keys are distinct");
 
         // Convert AccountId into its Word encoding for storage.
         let owner_account_id_word: Word = [
@@ -313,6 +314,7 @@ pub fn create_network_fungible_faucet(
     symbol: TokenSymbol,
     decimals: u8,
     max_supply: Felt,
+    name: TokenName,
     owner_account_id: AccountId,
 ) -> Result<Account, FungibleFaucetError> {
     let auth_component: AccountComponent = NoAuth::new().into();
@@ -321,7 +323,13 @@ pub fn create_network_fungible_faucet(
         .account_type(AccountType::FungibleFaucet)
         .storage_mode(AccountStorageMode::Network)
         .with_auth_component(auth_component)
-        .with_component(NetworkFungibleFaucet::new(symbol, decimals, max_supply, owner_account_id)?)
+        .with_component(NetworkFungibleFaucet::new(
+            symbol,
+            decimals,
+            max_supply,
+            name,
+            owner_account_id,
+        )?)
         .build()
         .map_err(FungibleFaucetError::AccountError)?;
 
@@ -330,6 +338,8 @@ pub fn create_network_fungible_faucet(
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use assert_matches::assert_matches;
     use miden_protocol::account::{
         AccountBuilder, AccountComponent, AccountId, AccountIdVersion, AccountStorageMode,
@@ -340,12 +350,14 @@ mod tests {
 
     use super::{FungibleFaucetError, NetworkFungibleFaucet};
     use crate::account::auth::NoAuth;
+    use crate::account::faucets::{TokenLogoURI, TokenName};
 
     #[test]
     fn network_fungible_faucet_try_from_account_and_with_token_supply() {
         let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
         let decimals = 2u8;
         let max_supply = Felt::new(1000);
+        let name = TokenName::new("Network Token").unwrap();
         let owner_account_id = AccountId::dummy(
             [1u8; 15],
             AccountIdVersion::Version0,
@@ -354,8 +366,9 @@ mod tests {
         );
         let seed: [u8; 32] = [1u8; 32];
 
-        let network_faucet = NetworkFungibleFaucet::new(symbol, decimals, max_supply, owner_account_id)
-            .expect("new should succeed");
+        let network_faucet =
+            NetworkFungibleFaucet::new(symbol, decimals, max_supply, name, owner_account_id)
+                .expect("new should succeed");
         let account = AccountBuilder::new(seed)
             .account_type(AccountType::FungibleFaucet)
             .with_auth_component(AccountComponent::from(NoAuth::new()))
@@ -368,8 +381,8 @@ mod tests {
         assert_eq!(extracted.decimals(), decimals);
         assert_eq!(extracted.max_supply(), max_supply);
         assert_eq!(extracted.token_supply(), Felt::ZERO);
-        assert_eq!(extracted.name(), Felt::ZERO);
-        assert_eq!(extracted.uri(), Felt::ZERO);
+        assert_eq!(extracted.name().to_string(), "Network Token");
+        assert!(extracted.logo_uri().is_none());
         assert_eq!(extracted.owner_account_id(), owner_account_id);
     }
 
@@ -377,6 +390,7 @@ mod tests {
     fn network_fungible_faucet_with_token_supply_succeeds_and_fails() {
         let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
         let max_supply = Felt::new(100);
+        let name = TokenName::new("Network Token").unwrap();
         let owner_account_id = AccountId::dummy(
             [2u8; 15],
             AccountIdVersion::Version0,
@@ -384,16 +398,52 @@ mod tests {
             AccountStorageMode::Private,
         );
 
-        let faucet = NetworkFungibleFaucet::new(symbol, 2u8, max_supply, owner_account_id)
-            .expect("new should succeed")
-            .with_token_supply(Felt::new(50))
-            .expect("with_token_supply(50) should succeed");
+        let faucet =
+            NetworkFungibleFaucet::new(symbol, 2u8, max_supply, name, owner_account_id)
+                .expect("new should succeed")
+                .with_token_supply(Felt::new(50))
+                .expect("with_token_supply(50) should succeed");
         assert_eq!(faucet.token_supply(), Felt::new(50));
 
-        let faucet_err = NetworkFungibleFaucet::new(symbol, 2u8, max_supply, owner_account_id)
-            .expect("new should succeed")
-            .with_token_supply(Felt::new(101));
+        let name2 = TokenName::new("Network Token").unwrap();
+        let faucet_err =
+            NetworkFungibleFaucet::new(symbol, 2u8, max_supply, name2, owner_account_id)
+                .expect("new should succeed")
+                .with_token_supply(Felt::new(101));
         let err = faucet_err.expect_err("with_token_supply(101) should fail");
         assert_matches!(err, FungibleFaucetError::TokenSupplyExceedsMaxSupply { token_supply: 101, max_supply: 100 });
+    }
+
+    #[test]
+    fn network_fungible_faucet_with_logo_uri_roundtrips() {
+        let symbol = TokenSymbol::new("NET").expect("invalid token symbol");
+        let name = TokenName::new("Network Token").unwrap();
+        let logo_uri = TokenLogoURI::new("https://example.com/net-logo.png").unwrap();
+        let owner_account_id = AccountId::dummy(
+            [3u8; 15],
+            AccountIdVersion::Version0,
+            AccountType::RegularAccountUpdatableCode,
+            AccountStorageMode::Private,
+        );
+        let seed: [u8; 32] = [3u8; 32];
+
+        let network_faucet =
+            NetworkFungibleFaucet::new(symbol, 2u8, Felt::new(1000), name, owner_account_id)
+                .expect("new should succeed")
+                .with_logo_uri(logo_uri);
+
+        let account = AccountBuilder::new(seed)
+            .account_type(AccountType::FungibleFaucet)
+            .with_auth_component(AccountComponent::from(NoAuth::new()))
+            .with_component(network_faucet)
+            .build_existing()
+            .expect("build should succeed");
+
+        let extracted = NetworkFungibleFaucet::try_from(account).expect("try_from should succeed");
+        assert_eq!(extracted.name().to_string(), "Network Token");
+        assert_eq!(
+            extracted.logo_uri().unwrap().to_string(),
+            "https://example.com/net-logo.png"
+        );
     }
 }
