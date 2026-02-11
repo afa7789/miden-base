@@ -3,14 +3,15 @@
 //! These tests verify that the MASM `storage_struct` procedures correctly read
 //! self-describing struct headers and field data from a double-word array.
 
+use miden_protocol::Word;
 use miden_protocol::account::{
     AccountBuilder,
     AccountComponent,
+    AccountComponentMetadata,
     StorageMap,
     StorageSlot,
     StorageSlotName,
 };
-use miden_protocol::Word;
 use miden_standards::code_builder::CodeBuilder;
 use miden_standards::storage::{StorageStructHeader, double_words_to_map_entries};
 use rand::{Rng, SeedableRng};
@@ -49,14 +50,15 @@ async fn test_storage_struct_get_header_empty_fields() -> anyhow::Result<()> {
     let header = StorageStructHeader::new(2, &[]).unwrap();
     let [hw0, hw1] = header.to_words();
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries(double_words_to_map_entries(&[[hw0, hw1]]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -119,14 +121,15 @@ async fn test_storage_struct_get_header() -> anyhow::Result<()> {
     let header = StorageStructHeader::new(1, &[1, 2, 3]).unwrap();
     let [hw0, hw1] = header.to_words();
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries(double_words_to_map_entries(&[[hw0, hw1]]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -193,14 +196,15 @@ async fn test_storage_struct_get_field_start_index() -> anyhow::Result<()> {
     let header = StorageStructHeader::new(1, &[2, 3, 1]).unwrap();
     let [hw0, hw1] = header.to_words();
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries(double_words_to_map_entries(&[[hw0, hw1]]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -271,14 +275,15 @@ async fn test_storage_struct_get_field_size() -> anyhow::Result<()> {
     let header = StorageStructHeader::new(1, &[5, 1, 3, 2]).unwrap();
     let [hw0, hw1] = header.to_words();
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries(double_words_to_map_entries(&[[hw0, hw1]]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -358,6 +363,7 @@ async fn test_storage_struct_get_field() -> anyhow::Result<()> {
     let field1_w0 = Word::from([100u32, 200, 0, 0]);
     let field1_w1 = Word::from([0u32, 0, 0, 0]);
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
@@ -368,8 +374,8 @@ async fn test_storage_struct_get_field() -> anyhow::Result<()> {
                 [field1_w0, field1_w1], // index 2: field 1
             ]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -450,6 +456,7 @@ async fn test_storage_struct_get_field_three_fields() -> anyhow::Result<()> {
     let f2_w0 = Word::from([100u32, 200, 0, 0]);
     let f2_w1 = Word::from([0u32, 0, 0, 0]);
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
@@ -461,8 +468,8 @@ async fn test_storage_struct_get_field_three_fields() -> anyhow::Result<()> {
                 [f2_w0, f2_w1],
             ]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -552,6 +559,7 @@ async fn test_storage_struct_get_field_chunk() -> anyhow::Result<()> {
     let f1_chunk2_w0 = Word::from([30u32, 31, 32, 33]);
     let f1_chunk2_w1 = Word::from([34u32, 35, 36, 37]);
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
@@ -564,8 +572,8 @@ async fn test_storage_struct_get_field_chunk() -> anyhow::Result<()> {
                 [f1_chunk2_w0, f1_chunk2_w1], // index 4: field 1, chunk 2
             ]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
@@ -650,14 +658,15 @@ async fn test_storage_struct_indices_match_rust() -> anyhow::Result<()> {
     let header = StorageStructHeader::new(1, &[2, 3, 1, 4]).unwrap();
     let [hw0, hw1] = header.to_words();
 
+    let metadata = AccountComponentMetadata::new("test::storage_struct").with_supports_all_types();
     let wrapper_component = AccountComponent::new(
         wrapper_library.clone(),
         vec![StorageSlot::with_map(
             slot_name.clone(),
             StorageMap::with_entries(double_words_to_map_entries(&[[hw0, hw1]]))?,
         )],
-    )?
-    .with_supports_all_types();
+        metadata,
+    )?;
 
     let account = AccountBuilder::new(ChaCha20Rng::from_os_rng().random())
         .with_auth_component(Auth::IncrNonce)
