@@ -2,4 +2,10 @@
 #
 # Re-exports the metadata extension procedures.
 
-pub use ::miden::standards::metadata::extension::get
+pub use ::miden::standards::metadata::extension::get_name
+pub use ::miden::standards::metadata::extension::get_content_uri_0
+pub use ::miden::standards::metadata::extension::get_content_uri_1
+pub use ::miden::standards::metadata::extension::get_content_uri_2
+pub use ::miden::standards::metadata::extension::get_content_uri_3
+pub use ::miden::standards::metadata::extension::get_content_uri_4
+pub use ::miden::standards::metadata::extension::get_content_uri_5

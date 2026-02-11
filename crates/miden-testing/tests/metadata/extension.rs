@@ -12,49 +12,39 @@ use miden_standards::account::metadata::MetadataExtension;
 use miden_standards::code_builder::CodeBuilder;
 use miden_testing::TransactionContextBuilder;
 
-/// Tests that the metadata extension can store and retrieve name and URI via MASM.
+/// Tests that the metadata extension can store and retrieve name via MASM.
 #[tokio::test]
-async fn metadata_extension_get_from_masm() -> anyhow::Result<()> {
-    // Create test values
-    let name_value = Word::from([1u32, 2, 3, 4]);
-    let uri_value = Word::from([5u32, 6, 7, 8]);
+async fn metadata_extension_get_name_from_masm() -> anyhow::Result<()> {
+    let name = [Word::from([1u32, 2, 3, 4]), Word::from([5u32, 6, 7, 8])];
 
-    // Create account with metadata extension
-    let extension = MetadataExtension::new().with_name(name_value).with_uri(uri_value);
+    let extension = MetadataExtension::new().with_name(name);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
         .with_component(extension)
         .build()?;
 
-    // MASM script to read metadata and verify values
-    // Use `call.` to invoke account procedures with the full path
+    // MASM script to read name and verify values
     let tx_script = format!(
         r#"
         begin
-            # Get name and verify
-            push.{key_name}
-            call.::miden::standards::metadata::extension::get
-            # => [NAME]
+            # Get name (returns [NAME_CHUNK_0, NAME_CHUNK_1])
+            call.::miden::standards::metadata::extension::get_name
+            # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
-            push.{expected_name}
-            assert_eqw.err="name does not match expected"
-            # => []
+            # Verify chunk 0 (on top)
+            push.{expected_name_0}
+            assert_eqw.err="name chunk 0 does not match"
+            # => [NAME_CHUNK_1]
 
-            # Get URI and verify
-            push.{key_uri}
-            call.::miden::standards::metadata::extension::get
-            # => [URI]
-
-            push.{expected_uri}
-            assert_eqw.err="uri does not match expected"
+            # Verify chunk 1
+            push.{expected_name_1}
+            assert_eqw.err="name chunk 1 does not match"
             # => []
         end
         "#,
-        key_name = MetadataExtension::key_name(),
-        key_uri = MetadataExtension::key_uri(),
-        expected_name = name_value,
-        expected_uri = uri_value,
+        expected_name_0 = name[0],
+        expected_name_1 = name[1],
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
@@ -71,34 +61,28 @@ async fn metadata_extension_get_from_masm() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Tests that reading a non-existent key returns EMPTY_WORD.
+/// Tests that reading zero-valued name returns empty words.
 #[tokio::test]
-async fn metadata_extension_get_non_existent_key_returns_empty() -> anyhow::Result<()> {
-    // Create account with empty metadata extension
-    let extension = MetadataExtension::new();
+async fn metadata_extension_get_name_zeros_returns_empty() -> anyhow::Result<()> {
+    // Create extension with zero-valued name (slots exist, but contain zeros)
+    let name = [Word::default(), Word::default()];
+    let extension = MetadataExtension::new().with_name(name);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
         .with_component(extension)
         .build()?;
 
-    // MASM script to read non-existent key and verify it's empty
-    let tx_script = format!(
-        r#"
+    let tx_script = r#"
         begin
-            # Get name (not set) and verify it's empty
-            push.{key_name}
-            call.::miden::standards::metadata::extension::get
-            # => [VALUE]
+            call.::miden::standards::metadata::extension::get_name
+            # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
-            # Empty word is [0, 0, 0, 0]
-            padw
-            assert_eqw.err="non-existent key should return empty word"
-            # => []
+            padw assert_eqw.err="name chunk 0 should be empty"
+            padw assert_eqw.err="name chunk 1 should be empty"
         end
-        "#,
-        key_name = MetadataExtension::key_name(),
-    );
+        "#
+    .to_string();
 
     let source_manager = Arc::new(DefaultSourceManager::default());
     let tx_script =
@@ -114,37 +98,60 @@ async fn metadata_extension_get_non_existent_key_returns_empty() -> anyhow::Resu
     Ok(())
 }
 
-/// Tests that custom keys work with the metadata extension.
+/// Tests that a single content URI chunk can be read via MASM.
 #[tokio::test]
-async fn metadata_extension_custom_key_from_masm() -> anyhow::Result<()> {
-    // Create a custom key and value
-    let custom_key = Word::from([100u32, 200, 300, 400]);
-    let custom_value = Word::from([10u32, 20, 30, 40]);
+async fn metadata_extension_get_content_uri_from_masm() -> anyhow::Result<()> {
+    let content_uri = [
+        Word::from([10u32, 11, 12, 13]),
+        Word::from([14u32, 15, 16, 17]),
+        Word::from([18u32, 19, 20, 21]),
+        Word::from([22u32, 23, 24, 25]),
+        Word::from([26u32, 27, 28, 29]),
+        Word::from([30u32, 31, 32, 33]),
+    ];
 
-    // Create account with custom metadata entry
-    let extension = MetadataExtension::new().with_entry(custom_key, custom_value);
+    let extension = MetadataExtension::new().with_content_uri(content_uri);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
         .with_component(extension)
         .build()?;
 
-    // MASM script to read custom key and verify value
+    // Test reading each content URI chunk individually
     let tx_script = format!(
         r#"
         begin
-            # Get custom key and verify
-            push.{custom_key}
-            call.::miden::standards::metadata::extension::get
-            # => [VALUE]
+            call.::miden::standards::metadata::extension::get_content_uri_0
+            push.{expected_0}
+            assert_eqw.err="content_uri_0 does not match"
 
-            push.{expected_value}
-            assert_eqw.err="custom key value does not match expected"
-            # => []
+            call.::miden::standards::metadata::extension::get_content_uri_1
+            push.{expected_1}
+            assert_eqw.err="content_uri_1 does not match"
+
+            call.::miden::standards::metadata::extension::get_content_uri_2
+            push.{expected_2}
+            assert_eqw.err="content_uri_2 does not match"
+
+            call.::miden::standards::metadata::extension::get_content_uri_3
+            push.{expected_3}
+            assert_eqw.err="content_uri_3 does not match"
+
+            call.::miden::standards::metadata::extension::get_content_uri_4
+            push.{expected_4}
+            assert_eqw.err="content_uri_4 does not match"
+
+            call.::miden::standards::metadata::extension::get_content_uri_5
+            push.{expected_5}
+            assert_eqw.err="content_uri_5 does not match"
         end
         "#,
-        custom_key = custom_key,
-        expected_value = custom_value,
+        expected_0 = content_uri[0],
+        expected_1 = content_uri[1],
+        expected_2 = content_uri[2],
+        expected_3 = content_uri[3],
+        expected_4 = content_uri[4],
+        expected_5 = content_uri[5],
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
@@ -162,19 +169,22 @@ async fn metadata_extension_custom_key_from_masm() -> anyhow::Result<()> {
 }
 
 /// Tests that the metadata extension works alongside a fungible faucet.
-/// This demonstrates the composable nature of account components - both
-/// components' storage slots are accessible from Rust.
 #[test]
 fn metadata_extension_with_faucet_storage() {
     use miden_protocol::Felt;
     use miden_protocol::account::AccountStorageMode;
     use miden_standards::account::faucets::BasicFungibleFaucet;
 
-    // Create metadata values (simple test values)
-    let name_value = Word::from([111u32, 222, 333, 444]);
-    let uri_value = Word::from([555u32, 666, 777, 888]);
+    let name = [Word::from([111u32, 222, 333, 444]), Word::from([555u32, 666, 777, 888])];
+    let content_uri = [
+        Word::from([10u32, 20, 30, 40]),
+        Word::from([50u32, 60, 70, 80]),
+        Word::from([90u32, 100, 110, 120]),
+        Word::from([130u32, 140, 150, 160]),
+        Word::from([170u32, 180, 190, 200]),
+        Word::from([210u32, 220, 230, 240]),
+    ];
 
-    // Create faucet with metadata extension
     let faucet = BasicFungibleFaucet::new(
         "TST".try_into().unwrap(),
         8,                    // decimals
@@ -182,7 +192,7 @@ fn metadata_extension_with_faucet_storage() {
     )
     .unwrap();
 
-    let extension = MetadataExtension::new().with_name(name_value).with_uri(uri_value);
+    let extension = MetadataExtension::new().with_name(name).with_content_uri(content_uri);
 
     let account = AccountBuilder::new([1u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -198,45 +208,57 @@ fn metadata_extension_with_faucet_storage() {
     assert_eq!(faucet_metadata[0], Felt::new(1_000_000)); // max_supply
     assert_eq!(faucet_metadata[1], Felt::new(8)); // decimals
 
-    // Verify extension metadata via StorageMap
-    let name_from_storage = account
+    // Verify name chunks via value slots
+    let name_0 = account
         .storage()
-        .get_map_item(MetadataExtension::slot(), MetadataExtension::key_name())
+        .get_item(MetadataExtension::name_chunk_0_slot())
         .unwrap();
-    let uri_from_storage = account
+    let name_1 = account
         .storage()
-        .get_map_item(MetadataExtension::slot(), MetadataExtension::key_uri())
+        .get_item(MetadataExtension::name_chunk_1_slot())
         .unwrap();
+    assert_eq!(name_0, name[0]);
+    assert_eq!(name_1, name[1]);
 
-    assert_eq!(name_from_storage, name_value);
-    assert_eq!(uri_from_storage, uri_value);
+    // Verify content URI chunks
+    for i in 0..6 {
+        let chunk = account
+            .storage()
+            .get_item(MetadataExtension::content_uri_slot(i))
+            .unwrap();
+        assert_eq!(chunk, content_uri[i]);
+    }
 }
 
-/// Tests that BasicFungibleFaucet with integrated name/uri works correctly.
-/// This uses the faucet's built-in with_name() and with_uri() methods.
+/// Tests that BasicFungibleFaucet with integrated name/content_uri works correctly.
 #[test]
 fn faucet_with_integrated_metadata() {
     use miden_protocol::Felt;
     use miden_protocol::account::AccountStorageMode;
     use miden_standards::account::faucets::BasicFungibleFaucet;
 
-    // Create metadata values
-    let name_value = Word::from([11u32, 22, 33, 44]);
-    let uri_value = Word::from([55u32, 66, 77, 88]);
+    let name = [Word::from([11u32, 22, 33, 44]), Word::from([55u32, 66, 77, 88])];
+    let content_uri = [
+        Word::from([1u32, 2, 3, 4]),
+        Word::from([5u32, 6, 7, 8]),
+        Word::from([9u32, 10, 11, 12]),
+        Word::from([13u32, 14, 15, 16]),
+        Word::from([17u32, 18, 19, 20]),
+        Word::from([21u32, 22, 23, 24]),
+    ];
 
-    // Create faucet with integrated name and uri
     let faucet = BasicFungibleFaucet::new(
         "INT".try_into().unwrap(),
         6,                  // decimals
         Felt::new(500_000), // max_supply
     )
     .unwrap()
-    .with_name(name_value)
-    .with_uri(uri_value);
+    .with_name(name)
+    .with_content_uri(content_uri);
 
     // Verify the getters work
-    assert_eq!(faucet.name(), Some(name_value));
-    assert_eq!(faucet.uri(), Some(uri_value));
+    assert_eq!(faucet.name(), Some(name));
+    assert_eq!(faucet.content_uri(), Some(content_uri));
 
     let account = AccountBuilder::new([2u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -251,47 +273,60 @@ fn faucet_with_integrated_metadata() {
     assert_eq!(faucet_metadata[0], Felt::new(500_000)); // max_supply
     assert_eq!(faucet_metadata[1], Felt::new(6)); // decimals
 
-    // Verify extension metadata via StorageMap
-    let name_from_storage = account
+    // Verify name chunks via value slots
+    let name_0 = account
         .storage()
-        .get_map_item(BasicFungibleFaucet::extension_slot(), MetadataExtension::key_name())
+        .get_item(MetadataExtension::name_chunk_0_slot())
         .unwrap();
-    let uri_from_storage = account
+    let name_1 = account
         .storage()
-        .get_map_item(BasicFungibleFaucet::extension_slot(), MetadataExtension::key_uri())
+        .get_item(MetadataExtension::name_chunk_1_slot())
         .unwrap();
+    assert_eq!(name_0, name[0]);
+    assert_eq!(name_1, name[1]);
 
-    assert_eq!(name_from_storage, name_value);
-    assert_eq!(uri_from_storage, uri_value);
+    // Verify content URI chunks
+    for i in 0..6 {
+        let chunk = account
+            .storage()
+            .get_item(MetadataExtension::content_uri_slot(i))
+            .unwrap();
+        assert_eq!(chunk, content_uri[i]);
+    }
 
     // Verify the faucet can be recovered from the account
     let recovered_faucet = BasicFungibleFaucet::try_from(&account).unwrap();
-    assert_eq!(recovered_faucet.name(), Some(name_value));
-    assert_eq!(recovered_faucet.uri(), Some(uri_value));
+    assert_eq!(recovered_faucet.name(), Some(name));
+    assert_eq!(recovered_faucet.content_uri(), Some(content_uri));
     assert_eq!(recovered_faucet.max_supply(), Felt::new(500_000));
     assert_eq!(recovered_faucet.decimals(), 6);
 }
 
-/// Tests that BasicFungibleFaucet metadata can be read from MASM using the faucet's get procedure.
+/// Tests that BasicFungibleFaucet metadata can be read from MASM using the faucet's procedures.
 #[tokio::test]
 async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
     use miden_protocol::Felt;
     use miden_protocol::account::AccountStorageMode;
     use miden_standards::account::faucets::BasicFungibleFaucet;
 
-    // Create metadata values
-    let name_value = Word::from([100u32, 200, 300, 400]);
-    let uri_value = Word::from([500u32, 600, 700, 800]);
+    let name = [Word::from([100u32, 200, 300, 400]), Word::from([500u32, 600, 700, 800])];
+    let content_uri = [
+        Word::from([1u32, 2, 3, 4]),
+        Word::from([5u32, 6, 7, 8]),
+        Word::from([9u32, 10, 11, 12]),
+        Word::from([13u32, 14, 15, 16]),
+        Word::from([17u32, 18, 19, 20]),
+        Word::from([21u32, 22, 23, 24]),
+    ];
 
-    // Create faucet with integrated name and uri
     let faucet = BasicFungibleFaucet::new(
         "MAS".try_into().unwrap(),
         10,                 // decimals
         Felt::new(999_999), // max_supply
     )
     .unwrap()
-    .with_name(name_value)
-    .with_uri(uri_value);
+    .with_name(name)
+    .with_content_uri(content_uri);
 
     let account = AccountBuilder::new([3u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -300,33 +335,29 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
         .with_component(faucet)
         .build()?;
 
-    // MASM script to read metadata via the faucet's get procedure
+    // MASM script to read name via the extension procedures and verify
     let tx_script = format!(
         r#"
         begin
-            # Get name via faucet's get procedure and verify
-            push.{key_name}
-            call.::miden::standards::metadata::extension::get
-            # => [NAME]
+            # Get name and verify
+            call.::miden::standards::metadata::extension::get_name
+            # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
-            push.{expected_name}
-            assert_eqw.err="faucet name does not match expected"
-            # => []
+            push.{expected_name_0}
+            assert_eqw.err="faucet name chunk 0 does not match"
 
-            # Get URI via faucet's get procedure and verify
-            push.{key_uri}
-            call.::miden::standards::metadata::extension::get
-            # => [URI]
+            push.{expected_name_1}
+            assert_eqw.err="faucet name chunk 1 does not match"
 
-            push.{expected_uri}
-            assert_eqw.err="faucet uri does not match expected"
-            # => []
+            # Get first content URI chunk and verify
+            call.::miden::standards::metadata::extension::get_content_uri_0
+            push.{expected_uri_0}
+            assert_eqw.err="faucet content_uri_0 does not match"
         end
         "#,
-        key_name = MetadataExtension::key_name(),
-        key_uri = MetadataExtension::key_uri(),
-        expected_name = name_value,
-        expected_uri = uri_value,
+        expected_name_0 = name[0],
+        expected_name_1 = name[1],
+        expected_uri_0 = content_uri[0],
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());

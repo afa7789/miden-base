@@ -1,40 +1,157 @@
 # Metadata Extension
 #
-# A flexible key-value store for account metadata using a StorageMap slot.
-# Any Word can be used as a key to store and retrieve a Word value.
-#
-# Usage:
-#   push.MY_KEY
-#   exec.miden::standards::metadata::extension::get
-#   # => [VALUE]
+# Stores account metadata (name, content URI) in fixed value slots.
+# - Name: 2 value slots (2 Words = 8 felts)
+# - Content URI: 6 value slots (6 Words = 24 felts)
 
 use miden::protocol::active_account
 
 # CONSTANTS
 # =================================================================================================
 
-# The StorageMap slot for metadata key-value pairs.
-const METADATA_SLOT = word("miden::standards::metadata::extension")
+const NAME_CHUNK_0_SLOT = word("miden::standards::metadata::name_chunk_0")
+const NAME_CHUNK_1_SLOT = word("miden::standards::metadata::name_chunk_1")
+const CONTENT_URI_0_SLOT = word("miden::standards::metadata::content_uri_0")
+const CONTENT_URI_1_SLOT = word("miden::standards::metadata::content_uri_1")
+const CONTENT_URI_2_SLOT = word("miden::standards::metadata::content_uri_2")
+const CONTENT_URI_3_SLOT = word("miden::standards::metadata::content_uri_3")
+const CONTENT_URI_4_SLOT = word("miden::standards::metadata::content_uri_4")
+const CONTENT_URI_5_SLOT = word("miden::standards::metadata::content_uri_5")
+
+# Local memory indices for get_name
+const CHUNK_1_LOC = 0
+const CHUNK_0_LOC = 4
+
+# Local memory index for content URI getters
+const VALUE_LOC = 0
 
 # PROCEDURES
 # =================================================================================================
 
-#! Returns the value for the given key.
+#! Returns the name (2 Words).
 #!
-#! Inputs:  [KEY]
-#! Outputs: [VALUE]
+#! Inputs:  []
+#! Outputs: [NAME_CHUNK_0, NAME_CHUNK_1]
 #!
 #! Where:
-#! - KEY is the metadata key (Word)
-#! - VALUE is the metadata value (Word), or EMPTY_WORD if not set
+#! - NAME_CHUNK_0 is the first Word of the name
+#! - NAME_CHUNK_1 is the second Word of the name
 #!
-#! Invocation: exec
-pub proc get
-    # => [KEY]
+#! Invocation: call
+@locals(8)
+pub proc get_name
+    # Get chunk 1
+    push.NAME_CHUNK_1_SLOT[0..2]
+    exec.active_account::get_item
+    # => [CHUNK_1, padding...] depth=20
 
-    push.METADATA_SLOT[0..2]
-    # => [slot_id_prefix, slot_id_suffix, KEY]
+    loc_storew_be.CHUNK_1_LOC dropw
+    # => [padding...] depth=16
 
-    exec.active_account::get_map_item
-    # => [VALUE]
+    # Get chunk 0
+    push.NAME_CHUNK_0_SLOT[0..2]
+    exec.active_account::get_item
+    # => [CHUNK_0, padding...] depth=20
+
+    loc_storew_be.CHUNK_0_LOC dropw
+    # => [padding...] depth=16
+
+    # Restore results: CHUNK_0 on top, CHUNK_1 below
+    loc_loadw_be.CHUNK_1_LOC
+    # => [CHUNK_1, remaining...] depth=16
+
+    swapw
+    # => [remaining, CHUNK_1, ...] depth=16
+
+    loc_loadw_be.CHUNK_0_LOC
+    # => [CHUNK_0, CHUNK_1, ...] depth=16
+end
+
+#! Returns content URI chunk 0.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_0]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_0
+    push.CONTENT_URI_0_SLOT[0..2]
+    exec.active_account::get_item
+    # => [VALUE, padding...] depth=20
+
+    loc_storew_be.VALUE_LOC dropw
+    # => [padding...] depth=16
+
+    loc_loadw_be.VALUE_LOC
+    # => [VALUE, remaining...] depth=16
+end
+
+#! Returns content URI chunk 1.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_1]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_1
+    push.CONTENT_URI_1_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.VALUE_LOC dropw
+    loc_loadw_be.VALUE_LOC
+end
+
+#! Returns content URI chunk 2.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_2]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_2
+    push.CONTENT_URI_2_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.VALUE_LOC dropw
+    loc_loadw_be.VALUE_LOC
+end
+
+#! Returns content URI chunk 3.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_3]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_3
+    push.CONTENT_URI_3_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.VALUE_LOC dropw
+    loc_loadw_be.VALUE_LOC
+end
+
+#! Returns content URI chunk 4.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_4]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_4
+    push.CONTENT_URI_4_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.VALUE_LOC dropw
+    loc_loadw_be.VALUE_LOC
+end
+
+#! Returns content URI chunk 5.
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_5]
+#!
+#! Invocation: call
+@locals(4)
+pub proc get_content_uri_5
+    push.CONTENT_URI_5_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.VALUE_LOC dropw
+    loc_loadw_be.VALUE_LOC
 end

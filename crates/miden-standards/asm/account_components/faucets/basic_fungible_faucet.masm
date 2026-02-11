@@ -5,5 +5,11 @@
 pub use ::miden::standards::faucets::basic_fungible::distribute
 pub use ::miden::standards::faucets::basic_fungible::burn
 
-# Metadata extension - allows reading name, URI, and other metadata
-pub use ::miden::standards::metadata::extension::get
+# Metadata extension - allows reading name and content URI
+pub use ::miden::standards::metadata::extension::get_name
+pub use ::miden::standards::metadata::extension::get_content_uri_0
+pub use ::miden::standards::metadata::extension::get_content_uri_1
+pub use ::miden::standards::metadata::extension::get_content_uri_2
+pub use ::miden::standards::metadata::extension::get_content_uri_3
+pub use ::miden::standards::metadata::extension::get_content_uri_4
+pub use ::miden::standards::metadata::extension::get_content_uri_5
