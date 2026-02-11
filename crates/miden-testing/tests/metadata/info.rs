@@ -8,16 +8,16 @@ use miden_protocol::Word;
 use miden_protocol::account::AccountBuilder;
 use miden_protocol::assembly::DefaultSourceManager;
 use miden_standards::account::auth::NoAuth;
-use miden_standards::account::metadata::MetadataExtension;
+use miden_standards::account::metadata::Info;
 use miden_standards::code_builder::CodeBuilder;
 use miden_testing::TransactionContextBuilder;
 
 /// Tests that the metadata extension can store and retrieve name via MASM.
 #[tokio::test]
-async fn metadata_extension_get_name_from_masm() -> anyhow::Result<()> {
+async fn metadata_info_get_name_from_masm() -> anyhow::Result<()> {
     let name = [Word::from([1u32, 2, 3, 4]), Word::from([5u32, 6, 7, 8])];
 
-    let extension = MetadataExtension::new().with_name(name);
+    let extension = Info::new().with_name(name);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
@@ -29,7 +29,7 @@ async fn metadata_extension_get_name_from_masm() -> anyhow::Result<()> {
         r#"
         begin
             # Get name (returns [NAME_CHUNK_0, NAME_CHUNK_1])
-            call.::miden::standards::metadata::extension::get_name
+            call.::miden::standards::metadata::info::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             # Verify chunk 0 (on top)
@@ -63,10 +63,10 @@ async fn metadata_extension_get_name_from_masm() -> anyhow::Result<()> {
 
 /// Tests that reading zero-valued name returns empty words.
 #[tokio::test]
-async fn metadata_extension_get_name_zeros_returns_empty() -> anyhow::Result<()> {
+async fn metadata_info_get_name_zeros_returns_empty() -> anyhow::Result<()> {
     // Create extension with zero-valued name (slots exist, but contain zeros)
     let name = [Word::default(), Word::default()];
-    let extension = MetadataExtension::new().with_name(name);
+    let extension = Info::new().with_name(name);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
@@ -75,7 +75,7 @@ async fn metadata_extension_get_name_zeros_returns_empty() -> anyhow::Result<()>
 
     let tx_script = r#"
         begin
-            call.::miden::standards::metadata::extension::get_name
+            call.::miden::standards::metadata::info::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             padw assert_eqw.err="name chunk 0 should be empty"
@@ -98,9 +98,9 @@ async fn metadata_extension_get_name_zeros_returns_empty() -> anyhow::Result<()>
     Ok(())
 }
 
-/// Tests that a single content URI chunk can be read via MASM.
+/// Tests that the full content URI (6 Words) can be read via MASM using get_content_uri.
 #[tokio::test]
-async fn metadata_extension_get_content_uri_from_masm() -> anyhow::Result<()> {
+async fn metadata_info_get_content_uri_from_masm() -> anyhow::Result<()> {
     let content_uri = [
         Word::from([10u32, 11, 12, 13]),
         Word::from([14u32, 15, 16, 17]),
@@ -110,48 +110,28 @@ async fn metadata_extension_get_content_uri_from_masm() -> anyhow::Result<()> {
         Word::from([30u32, 31, 32, 33]),
     ];
 
-    let extension = MetadataExtension::new().with_content_uri(content_uri);
+    let extension = Info::new().with_content_uri(content_uri);
 
     let account = AccountBuilder::new([1u8; 32])
         .with_auth_component(NoAuth)
         .with_component(extension)
         .build()?;
 
-    // Test reading each content URI chunk individually
+    // Test get_content_uri returns 6 words; verify the top word is CONTENT_URI_0, then drop the
+    // rest.
     let tx_script = format!(
         r#"
         begin
-            call.::miden::standards::metadata::extension::get_content_uri_0
+            call.::miden::standards::metadata::info::get_content_uri
+            # => [CONTENT_URI_0, CONTENT_URI_1, CONTENT_URI_2, CONTENT_URI_3, CONTENT_URI_4, CONTENT_URI_5]
+
             push.{expected_0}
             assert_eqw.err="content_uri_0 does not match"
-
-            call.::miden::standards::metadata::extension::get_content_uri_1
-            push.{expected_1}
-            assert_eqw.err="content_uri_1 does not match"
-
-            call.::miden::standards::metadata::extension::get_content_uri_2
-            push.{expected_2}
-            assert_eqw.err="content_uri_2 does not match"
-
-            call.::miden::standards::metadata::extension::get_content_uri_3
-            push.{expected_3}
-            assert_eqw.err="content_uri_3 does not match"
-
-            call.::miden::standards::metadata::extension::get_content_uri_4
-            push.{expected_4}
-            assert_eqw.err="content_uri_4 does not match"
-
-            call.::miden::standards::metadata::extension::get_content_uri_5
-            push.{expected_5}
-            assert_eqw.err="content_uri_5 does not match"
+            dropw dropw dropw dropw dropw
+            # All 6 words returned; first word matches
         end
         "#,
         expected_0 = content_uri[0],
-        expected_1 = content_uri[1],
-        expected_2 = content_uri[2],
-        expected_3 = content_uri[3],
-        expected_4 = content_uri[4],
-        expected_5 = content_uri[5],
     );
 
     let source_manager = Arc::new(DefaultSourceManager::default());
@@ -170,7 +150,7 @@ async fn metadata_extension_get_content_uri_from_masm() -> anyhow::Result<()> {
 
 /// Tests that the metadata extension works alongside a fungible faucet.
 #[test]
-fn metadata_extension_with_faucet_storage() {
+fn metadata_info_with_faucet_storage() {
     use miden_protocol::Felt;
     use miden_protocol::account::AccountStorageMode;
     use miden_standards::account::faucets::BasicFungibleFaucet;
@@ -192,7 +172,7 @@ fn metadata_extension_with_faucet_storage() {
     )
     .unwrap();
 
-    let extension = MetadataExtension::new().with_name(name).with_content_uri(content_uri);
+    let extension = Info::new().with_name(name).with_content_uri(content_uri);
 
     let account = AccountBuilder::new([1u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -209,24 +189,15 @@ fn metadata_extension_with_faucet_storage() {
     assert_eq!(faucet_metadata[1], Felt::new(8)); // decimals
 
     // Verify name chunks via value slots
-    let name_0 = account
-        .storage()
-        .get_item(MetadataExtension::name_chunk_0_slot())
-        .unwrap();
-    let name_1 = account
-        .storage()
-        .get_item(MetadataExtension::name_chunk_1_slot())
-        .unwrap();
+    let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
+    let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
     assert_eq!(name_0, name[0]);
     assert_eq!(name_1, name[1]);
 
     // Verify content URI chunks
-    for i in 0..6 {
-        let chunk = account
-            .storage()
-            .get_item(MetadataExtension::content_uri_slot(i))
-            .unwrap();
-        assert_eq!(chunk, content_uri[i]);
+    for (i, expected) in content_uri.iter().enumerate() {
+        let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
+        assert_eq!(chunk, *expected);
     }
 }
 
@@ -274,24 +245,15 @@ fn faucet_with_integrated_metadata() {
     assert_eq!(faucet_metadata[1], Felt::new(6)); // decimals
 
     // Verify name chunks via value slots
-    let name_0 = account
-        .storage()
-        .get_item(MetadataExtension::name_chunk_0_slot())
-        .unwrap();
-    let name_1 = account
-        .storage()
-        .get_item(MetadataExtension::name_chunk_1_slot())
-        .unwrap();
+    let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
+    let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
     assert_eq!(name_0, name[0]);
     assert_eq!(name_1, name[1]);
 
     // Verify content URI chunks
-    for i in 0..6 {
-        let chunk = account
-            .storage()
-            .get_item(MetadataExtension::content_uri_slot(i))
-            .unwrap();
-        assert_eq!(chunk, content_uri[i]);
+    for (i, expected) in content_uri.iter().enumerate() {
+        let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
+        assert_eq!(chunk, *expected);
     }
 
     // Verify the faucet can be recovered from the account
@@ -335,12 +297,12 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
         .with_component(faucet)
         .build()?;
 
-    // MASM script to read name via the extension procedures and verify
+    // MASM script to read name and full content URI via the extension procedures and verify
     let tx_script = format!(
         r#"
         begin
             # Get name and verify
-            call.::miden::standards::metadata::extension::get_name
+            call.::miden::standards::metadata::info::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             push.{expected_name_0}
@@ -349,10 +311,11 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
             push.{expected_name_1}
             assert_eqw.err="faucet name chunk 1 does not match"
 
-            # Get first content URI chunk and verify
-            call.::miden::standards::metadata::extension::get_content_uri_0
+            # Get content URI (6 words) and verify first chunk (CONTENT_URI_0 on top)
+            call.::miden::standards::metadata::info::get_content_uri
             push.{expected_uri_0}
             assert_eqw.err="faucet content_uri_0 does not match"
+            dropw dropw dropw dropw dropw
         end
         "#,
         expected_name_0 = name[0],

@@ -8,10 +8,5 @@ pub use ::miden::standards::faucets::network_fungible::transfer_ownership
 pub use ::miden::standards::faucets::network_fungible::renounce_ownership
 
 # Metadata extension - allows reading name and content URI
-pub use ::miden::standards::metadata::extension::get_name
-pub use ::miden::standards::metadata::extension::get_content_uri_0
-pub use ::miden::standards::metadata::extension::get_content_uri_1
-pub use ::miden::standards::metadata::extension::get_content_uri_2
-pub use ::miden::standards::metadata::extension::get_content_uri_3
-pub use ::miden::standards::metadata::extension::get_content_uri_4
-pub use ::miden::standards::metadata::extension::get_content_uri_5
+pub use ::miden::standards::metadata::info::get_name
+pub use ::miden::standards::metadata::info::get_content_uri

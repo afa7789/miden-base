@@ -1,1 +1,1 @@
-mod extension;
+mod info;

@@ -1,0 +1,6 @@
+# Metadata Info Component
+#
+# Re-exports the metadata info procedures.
+
+pub use ::miden::standards::metadata::info::get_name
+pub use ::miden::standards::metadata::info::get_content_uri
