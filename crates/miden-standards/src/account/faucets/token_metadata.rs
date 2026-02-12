@@ -1,17 +1,9 @@
 use miden_protocol::account::{AccountStorage, StorageSlot, StorageSlotName};
 use miden_protocol::asset::{FungibleAsset, TokenSymbol};
-use miden_protocol::utils::sync::LazyLock;
 use miden_protocol::{Felt, FieldElement, Word};
 
 use super::FungibleFaucetError;
-
-// CONSTANTS
-// ================================================================================================
-
-static METADATA_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::fungible_faucets::metadata")
-        .expect("storage slot name should be valid")
-});
+use crate::account::metadata;
 
 // TOKEN METADATA
 // ================================================================================================
@@ -104,8 +96,10 @@ impl TokenMetadata {
     // --------------------------------------------------------------------------------------------
 
     /// Returns the [`StorageSlotName`] where the token metadata is stored.
+    /// Returns the storage slot name for token metadata (canonical slot shared with metadata
+    /// module).
     pub fn metadata_slot() -> &'static StorageSlotName {
-        &METADATA_SLOT_NAME
+        metadata::token_metadata_slot()
     }
 
     /// Returns the current token supply (amount issued).

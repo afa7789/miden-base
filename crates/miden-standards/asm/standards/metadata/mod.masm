@@ -51,7 +51,7 @@ const URI_5_LOC = 20
 pub use ownable::get_owner
 
 # =================================================================================================
-# TOKEN METADATA (max_supply, decimals, token_symbol)
+# TOKEN METADATA (token_supply, max_supply, decimals, token_symbol)
 # =================================================================================================
 
 # Scripts that need more than one of max_supply/decimals/token_symbol can call
@@ -59,24 +59,21 @@ pub use ownable::get_owner
 
 #! Returns the full token metadata word.
 #!
-#! The word is stored as Word::new([max_supply, decimals, token_symbol, 0]) and
+#! The word is stored as [token_supply, max_supply, decimals, token_symbol] and
 #! loaded onto the stack with word[3] on top.
 #!
 #! Inputs:  []
-#! Outputs: [0, token_symbol, decimals, max_supply]
+#! Outputs: [token_symbol, decimals, max_supply, token_supply, pad(12)] (word[3] on top)
 #!
 #! Invocation: call
 pub proc get_token_metadata
     push.TOKEN_METADATA_SLOT[0..2]
     exec.active_account::get_item
-    # get_item adds 4 elements (consumes 2-felt key, returns 4-felt word, net +2;
-    # combined with push +2 = net +4 above the 16-element call frame).
-    # Swap the result word below the overflow padding, then drop the padding.
     swapw dropw
-    # => [0, token_symbol, decimals, max_supply, pad(12)]
+    # => [token_symbol, decimals, max_supply, token_supply, pad(12)]
 end
 
-#! Returns the maximum supply (first element of token metadata word).
+#! Returns the maximum supply.
 #!
 #! Inputs:  []
 #! Outputs: [max_supply, pad(15)]
@@ -84,12 +81,12 @@ end
 #! Invocation: call
 pub proc get_max_supply
     exec.get_token_metadata
-    # => [0, token_symbol, decimals, max_supply, pad(12)]
-    drop drop drop
+    # => [token_symbol, decimals, max_supply, token_supply, pad(12)]
+    drop drop
     # => [max_supply, pad(15)]
 end
 
-#! Returns decimals (second element of token metadata word).
+#! Returns decimals.
 #!
 #! Inputs:  []
 #! Outputs: [decimals, pad(15)]
@@ -97,12 +94,12 @@ end
 #! Invocation: call
 pub proc get_decimals
     exec.get_token_metadata
-    # => [0, token_symbol, decimals, max_supply, pad(12)]
-    drop drop swap drop
+    # => [token_symbol, decimals, max_supply, token_supply, pad(12)]
+    drop
     # => [decimals, pad(15)]
 end
 
-#! Returns token_symbol (third element of token metadata word).
+#! Returns token_symbol.
 #!
 #! Inputs:  []
 #! Outputs: [token_symbol, pad(15)]
@@ -110,9 +107,8 @@ end
 #! Invocation: call
 pub proc get_token_symbol
     exec.get_token_metadata
-    # => [0, token_symbol, decimals, max_supply, pad(12)]
-    drop movdn.2 drop drop
-    # => [token_symbol, pad(15)]
+    # => [token_symbol, decimals, max_supply, token_supply, pad(12)]
+    # token_symbol already on top
 end
 
 # =================================================================================================

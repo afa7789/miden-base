@@ -200,10 +200,11 @@ fn metadata_info_with_faucet_storage() {
         .build()
         .unwrap();
 
-    // Verify faucet metadata is intact
+    // Verify faucet metadata is intact (Word layout: [token_supply, max_supply, decimals, symbol])
     let faucet_metadata = account.storage().get_item(BasicFungibleFaucet::metadata_slot()).unwrap();
-    assert_eq!(faucet_metadata[0], Felt::new(1_000_000)); // max_supply
-    assert_eq!(faucet_metadata[1], Felt::new(8)); // decimals
+    assert_eq!(faucet_metadata[0], Felt::new(0)); // token_supply
+    assert_eq!(faucet_metadata[1], Felt::new(1_000_000)); // max_supply
+    assert_eq!(faucet_metadata[2], Felt::new(8)); // decimals
 
     assert_storage_name_and_content_uri(&account, name, &content_uri);
 }
@@ -242,10 +243,11 @@ fn faucet_with_integrated_metadata() {
         .build()
         .unwrap();
 
-    // Verify faucet metadata is intact
+    // Verify faucet metadata is intact (Word layout: [token_supply, max_supply, decimals, symbol])
     let faucet_metadata = account.storage().get_item(BasicFungibleFaucet::metadata_slot()).unwrap();
-    assert_eq!(faucet_metadata[0], Felt::new(500_000)); // max_supply
-    assert_eq!(faucet_metadata[1], Felt::new(6)); // decimals
+    assert_eq!(faucet_metadata[0], Felt::new(0)); // token_supply
+    assert_eq!(faucet_metadata[1], Felt::new(500_000)); // max_supply
+    assert_eq!(faucet_metadata[2], Felt::new(6)); // decimals
 
     assert_storage_name_and_content_uri(&account, name, &content_uri);
 
