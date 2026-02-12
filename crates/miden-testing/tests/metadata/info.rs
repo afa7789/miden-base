@@ -29,7 +29,7 @@ async fn metadata_info_get_name_from_masm() -> anyhow::Result<()> {
         r#"
         begin
             # Get name (returns [NAME_CHUNK_0, NAME_CHUNK_1])
-            call.::miden::standards::metadata::info::get_name
+            call.::miden::standards::metadata::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             # Verify chunk 0 (on top)
@@ -75,7 +75,7 @@ async fn metadata_info_get_name_zeros_returns_empty() -> anyhow::Result<()> {
 
     let tx_script = r#"
         begin
-            call.::miden::standards::metadata::info::get_name
+            call.::miden::standards::metadata::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             padw assert_eqw.err="name chunk 0 should be empty"
@@ -122,7 +122,7 @@ async fn metadata_info_get_content_uri_from_masm() -> anyhow::Result<()> {
     let tx_script = format!(
         r#"
         begin
-            call.::miden::standards::metadata::info::get_content_uri
+            call.::miden::standards::metadata::get_content_uri
             # => [CONTENT_URI_0, CONTENT_URI_1, CONTENT_URI_2, CONTENT_URI_3, CONTENT_URI_4, CONTENT_URI_5]
 
             push.{expected_0}
@@ -146,6 +146,23 @@ async fn metadata_info_get_content_uri_from_masm() -> anyhow::Result<()> {
     tx_context.execute().await?;
 
     Ok(())
+}
+
+/// Asserts that the account storage contains the expected name and content URI values.
+fn assert_storage_name_and_content_uri(
+    account: &miden_protocol::account::Account,
+    name: [Word; 2],
+    content_uri: &[Word; 6],
+) {
+    let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
+    let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
+    assert_eq!(name_0, name[0]);
+    assert_eq!(name_1, name[1]);
+
+    for (i, expected) in content_uri.iter().enumerate() {
+        let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
+        assert_eq!(chunk, *expected);
+    }
 }
 
 /// Tests that the metadata extension works alongside a fungible faucet.
@@ -188,17 +205,7 @@ fn metadata_info_with_faucet_storage() {
     assert_eq!(faucet_metadata[0], Felt::new(1_000_000)); // max_supply
     assert_eq!(faucet_metadata[1], Felt::new(8)); // decimals
 
-    // Verify name chunks via value slots
-    let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
-    let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
-    assert_eq!(name_0, name[0]);
-    assert_eq!(name_1, name[1]);
-
-    // Verify content URI chunks
-    for (i, expected) in content_uri.iter().enumerate() {
-        let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
-        assert_eq!(chunk, *expected);
-    }
+    assert_storage_name_and_content_uri(&account, name, &content_uri);
 }
 
 /// Tests that BasicFungibleFaucet with integrated name/content_uri works correctly.
@@ -244,17 +251,7 @@ fn faucet_with_integrated_metadata() {
     assert_eq!(faucet_metadata[0], Felt::new(500_000)); // max_supply
     assert_eq!(faucet_metadata[1], Felt::new(6)); // decimals
 
-    // Verify name chunks via value slots
-    let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
-    let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
-    assert_eq!(name_0, name[0]);
-    assert_eq!(name_1, name[1]);
-
-    // Verify content URI chunks
-    for (i, expected) in content_uri.iter().enumerate() {
-        let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
-        assert_eq!(chunk, *expected);
-    }
+    assert_storage_name_and_content_uri(&account, name, &content_uri);
 
     // Verify the faucet can be recovered from the account
     let recovered_faucet = BasicFungibleFaucet::try_from(&account).unwrap();
@@ -262,6 +259,71 @@ fn faucet_with_integrated_metadata() {
     assert_eq!(recovered_faucet.content_uri(), Some(content_uri));
     assert_eq!(recovered_faucet.max_supply(), Felt::new(500_000));
     assert_eq!(recovered_faucet.decimals(), 6);
+}
+
+/// Tests that get_decimals and get_token_symbol return the correct individual values from MASM.
+#[tokio::test]
+async fn faucet_get_decimals_and_symbol_from_masm() -> anyhow::Result<()> {
+    use miden_protocol::Felt;
+    use miden_protocol::account::AccountStorageMode;
+    use miden_protocol::asset::TokenSymbol;
+    use miden_standards::account::faucets::BasicFungibleFaucet;
+
+    let token_symbol = TokenSymbol::new("POL").unwrap();
+    let decimals: u8 = 8;
+    let max_supply = Felt::new(1_000_000);
+
+    let faucet = BasicFungibleFaucet::new(token_symbol, decimals, max_supply)
+        .unwrap();
+
+    let account = AccountBuilder::new([4u8; 32])
+        .account_type(miden_protocol::account::AccountType::FungibleFaucet)
+        .storage_mode(AccountStorageMode::Public)
+        .with_auth_component(NoAuth)
+        .with_component(faucet)
+        .build()?;
+
+    // Compute expected felt values
+    let expected_decimals = Felt::from(decimals).as_int();
+    let expected_symbol = Felt::from(token_symbol).as_int();
+    let expected_max_supply = max_supply.as_int();
+
+    let tx_script = format!(
+        r#"
+        begin
+            # Test get_decimals
+            call.::miden::standards::metadata::get_decimals
+            # => [decimals]
+            push.{expected_decimals}
+            assert_eq.err="decimals does not match"
+
+            # Test get_token_symbol
+            call.::miden::standards::metadata::get_token_symbol
+            # => [token_symbol]
+            push.{expected_symbol}
+            assert_eq.err="token_symbol does not match"
+
+            # Test get_max_supply (sanity check)
+            call.::miden::standards::metadata::get_max_supply
+            # => [max_supply]
+            push.{expected_max_supply}
+            assert_eq.err="max_supply does not match"
+        end
+        "#,
+    );
+
+    let source_manager = Arc::new(DefaultSourceManager::default());
+    let tx_script =
+        CodeBuilder::with_source_manager(source_manager.clone()).compile_tx_script(tx_script)?;
+
+    let tx_context = TransactionContextBuilder::new(account)
+        .tx_script(tx_script)
+        .with_source_manager(source_manager)
+        .build()?;
+
+    tx_context.execute().await?;
+
+    Ok(())
 }
 
 /// Tests that BasicFungibleFaucet metadata can be read from MASM using the faucet's procedures.
@@ -302,7 +364,7 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
         r#"
         begin
             # Get name and verify
-            call.::miden::standards::metadata::info::get_name
+            call.::miden::standards::metadata::get_name
             # => [NAME_CHUNK_0, NAME_CHUNK_1]
 
             push.{expected_name_0}
@@ -312,7 +374,7 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
             assert_eqw.err="faucet name chunk 1 does not match"
 
             # Get content URI (6 words) and verify first chunk (CONTENT_URI_0 on top)
-            call.::miden::standards::metadata::info::get_content_uri
+            call.::miden::standards::metadata::get_content_uri
             push.{expected_uri_0}
             assert_eqw.err="faucet content_uri_0 does not match"
             dropw dropw dropw dropw dropw

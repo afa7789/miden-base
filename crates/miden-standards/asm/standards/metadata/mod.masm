@@ -1,0 +1,187 @@
+# miden::standards::metadata
+#
+# Single place for account/contract/faucet metadata. All of the following are metadata
+# of the account: token_symbol, decimals, max_supply, owner, name, and content URI.
+# Slot constants and getters live here.
+
+use miden::protocol::active_account
+use miden::standards::access::ownable
+
+# =================================================================================================
+# CONSTANTS — canonical layout: value slots 0..9
+# =================================================================================================
+# Slot 0: token_metadata  | Slot 1: owner_config | Slots 2-3: name | Slots 4-9: content_uri
+# =================================================================================================
+
+const TOKEN_METADATA_SLOT = word("miden::standards::metadata::0")
+const OWNER_CONFIG_SLOT = word("miden::standards::metadata::1")
+const NAME_CHUNK_0_SLOT = word("miden::standards::metadata::2")
+const NAME_CHUNK_1_SLOT = word("miden::standards::metadata::3")
+const CONTENT_URI_0_SLOT = word("miden::standards::metadata::4")
+const CONTENT_URI_1_SLOT = word("miden::standards::metadata::5")
+const CONTENT_URI_2_SLOT = word("miden::standards::metadata::6")
+const CONTENT_URI_3_SLOT = word("miden::standards::metadata::7")
+const CONTENT_URI_4_SLOT = word("miden::standards::metadata::8")
+const CONTENT_URI_5_SLOT = word("miden::standards::metadata::9")
+
+# Local memory indices for get_name
+const CHUNK_1_LOC = 0
+const CHUNK_0_LOC = 4
+
+# Local memory indices for get_content_uri (6 words)
+const URI_0_LOC = 0
+const URI_1_LOC = 4
+const URI_2_LOC = 8
+const URI_3_LOC = 12
+const URI_4_LOC = 16
+const URI_5_LOC = 20
+
+# =================================================================================================
+# OWNER — re-export from ownable
+# =================================================================================================
+
+#! Returns the owner AccountId.
+#!
+#! Inputs:  [pad(16)]
+#! Outputs: [owner_prefix, owner_suffix, pad(14)]
+#!
+#! Invocation: call
+pub use ownable::get_owner
+
+# =================================================================================================
+# TOKEN METADATA (max_supply, decimals, token_symbol)
+# =================================================================================================
+
+# Scripts that need more than one of max_supply/decimals/token_symbol can call
+# get_token_metadata once and manipulate the stack to avoid multiple storage reads.
+
+#! Returns the full token metadata word.
+#!
+#! The word is stored as Word::new([max_supply, decimals, token_symbol, 0]) and
+#! loaded onto the stack with word[3] on top.
+#!
+#! Inputs:  []
+#! Outputs: [0, token_symbol, decimals, max_supply]
+#!
+#! Invocation: call
+pub proc get_token_metadata
+    push.TOKEN_METADATA_SLOT[0..2]
+    exec.active_account::get_item
+    # get_item adds 4 elements (consumes 2-felt key, returns 4-felt word, net +2;
+    # combined with push +2 = net +4 above the 16-element call frame).
+    # Swap the result word below the overflow padding, then drop the padding.
+    swapw dropw
+    # => [0, token_symbol, decimals, max_supply, pad(12)]
+end
+
+#! Returns the maximum supply (first element of token metadata word).
+#!
+#! Inputs:  []
+#! Outputs: [max_supply, pad(15)]
+#!
+#! Invocation: call
+pub proc get_max_supply
+    exec.get_token_metadata
+    # => [0, token_symbol, decimals, max_supply, pad(12)]
+    drop drop drop
+    # => [max_supply, pad(15)]
+end
+
+#! Returns decimals (second element of token metadata word).
+#!
+#! Inputs:  []
+#! Outputs: [decimals, pad(15)]
+#!
+#! Invocation: call
+pub proc get_decimals
+    exec.get_token_metadata
+    # => [0, token_symbol, decimals, max_supply, pad(12)]
+    drop drop swap drop
+    # => [decimals, pad(15)]
+end
+
+#! Returns token_symbol (third element of token metadata word).
+#!
+#! Inputs:  []
+#! Outputs: [token_symbol, pad(15)]
+#!
+#! Invocation: call
+pub proc get_token_symbol
+    exec.get_token_metadata
+    # => [0, token_symbol, decimals, max_supply, pad(12)]
+    drop movdn.2 drop drop
+    # => [token_symbol, pad(15)]
+end
+
+# =================================================================================================
+# NAME (2 words)
+# =================================================================================================
+
+#! Returns the name (2 Words).
+#!
+#! Inputs:  []
+#! Outputs: [NAME_CHUNK_0, NAME_CHUNK_1]
+#!
+#! Where NAME_CHUNK_0 is the first Word of the name, NAME_CHUNK_1 the second.
+#!
+#! Invocation: call
+@locals(8)
+pub proc get_name
+    push.NAME_CHUNK_1_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.CHUNK_1_LOC dropw
+
+    push.NAME_CHUNK_0_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.CHUNK_0_LOC dropw
+
+    loc_loadw_be.CHUNK_1_LOC
+    swapw
+    loc_loadw_be.CHUNK_0_LOC
+end
+
+# =================================================================================================
+# CONTENT URI (6 words)
+# =================================================================================================
+
+#! Returns the full content URI (6 Words).
+#!
+#! Inputs:  []
+#! Outputs: [CONTENT_URI_0, CONTENT_URI_1, ..., CONTENT_URI_5]
+#!
+#! Where CONTENT_URI_0 is on top of the stack.
+#!
+#! Invocation: call
+@locals(24)
+pub proc get_content_uri
+    push.CONTENT_URI_5_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_5_LOC dropw
+
+    push.CONTENT_URI_4_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_4_LOC dropw
+
+    push.CONTENT_URI_3_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_3_LOC dropw
+
+    push.CONTENT_URI_2_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_2_LOC dropw
+
+    push.CONTENT_URI_1_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_1_LOC dropw
+
+    push.CONTENT_URI_0_SLOT[0..2]
+    exec.active_account::get_item
+    loc_storew_be.URI_0_LOC dropw
+
+    loc_loadw_be.URI_5_LOC
+    loc_loadw_be.URI_4_LOC
+    loc_loadw_be.URI_3_LOC
+    loc_loadw_be.URI_2_LOC
+    loc_loadw_be.URI_1_LOC
+    loc_loadw_be.URI_0_LOC
+end

@@ -1,20 +1,247 @@
+//! Account / contract / faucet metadata (slots 0..9)
+//!
+//! All of the following are metadata of the account (or faucet): token_symbol, decimals,
+//! max_supply, owner, name, and content URI.
+//!
+//! ## Storage layout
+//!
+//! | Slot | Name | Contents |
+//! |------|------|----------|
+//! | 0 | `token_metadata` | `[max_supply, decimals, token_symbol, 0]` |
+//! | 1 | `owner_config` | owner account id |
+//! | 2 | `name_chunk_0` | first 4 felts of name |
+//! | 3 | `name_chunk_1` | last 4 felts of name |
+//! | 4–9 | `content_uri_0..5` | content URI (6 Words, 24 felts) |
+//!
+//! Slot names follow the pattern `miden::standards::metadata::{0..9}`.
+//!
+//! Layout sync: the same layout is defined in MASM at `asm/standards/metadata/mod.masm`.
+//! Any change to slot indices or names must be applied in both Rust and MASM.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use miden_standards::account::metadata::Info;
+//!
+//! let info = Info::new()
+//!     .with_name([name_word_0, name_word_1])
+//!     .with_content_uri([uri_0, uri_1, uri_2, uri_3, uri_4, uri_5]);
+//!
+//! let account = AccountBuilder::new(seed)
+//!     .with_component(info)
+//!     .build()?;
+//! ```
+
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use miden_protocol::Word;
 use miden_protocol::account::component::{AccountComponentMetadata, StorageSchema};
-use miden_protocol::account::{AccountComponent, StorageSlot, StorageSlotName};
+use miden_protocol::account::{
+    AccountComponent, AccountStorage, StorageSlot, StorageSlotName,
+};
 use miden_protocol::errors::ComponentMetadataError;
 use miden_protocol::utils::sync::LazyLock;
 
-use crate::account::components::storage_schema_library;
+use crate::account::components::{metadata_info_library, storage_schema_library};
 
-mod info;
-pub use info::Info;
+// CONSTANTS — canonical layout: slots 0–9
+// ================================================================================================
 
+/// Slot 0: token_metadata (max_supply, decimals, token_symbol, 0).
+pub static TOKEN_METADATA_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::0")
+        .expect("storage slot name should be valid")
+});
+
+/// Slot 1: owner_config.
+pub static OWNER_CONFIG_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::1")
+        .expect("storage slot name should be valid")
+});
+
+/// Slot 2: name chunk 0.
+pub static NAME_CHUNK_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::2")
+        .expect("storage slot name should be valid")
+});
+
+/// Slot 3: name chunk 1.
+pub static NAME_CHUNK_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::3")
+        .expect("storage slot name should be valid")
+});
+
+/// Slots 4..9: content_uri_0 .. content_uri_5.
+pub static CONTENT_URI_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::4")
+        .expect("storage slot name should be valid")
+});
+pub static CONTENT_URI_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::5")
+        .expect("storage slot name should be valid")
+});
+pub static CONTENT_URI_2_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::6")
+        .expect("storage slot name should be valid")
+});
+pub static CONTENT_URI_3_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::7")
+        .expect("storage slot name should be valid")
+});
+pub static CONTENT_URI_4_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::8")
+        .expect("storage slot name should be valid")
+});
+pub static CONTENT_URI_5_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
+    StorageSlotName::new("miden::standards::metadata::9")
+        .expect("storage slot name should be valid")
+});
+
+/// All content URI slot names, indexed 0..5 (storage slots 4..9).
+pub static CONTENT_URI_SLOTS: LazyLock<[&'static StorageSlotName; 6]> = LazyLock::new(|| {
+    [
+        &*CONTENT_URI_0_SLOT,
+        &*CONTENT_URI_1_SLOT,
+        &*CONTENT_URI_2_SLOT,
+        &*CONTENT_URI_3_SLOT,
+        &*CONTENT_URI_4_SLOT,
+        &*CONTENT_URI_5_SLOT,
+    ]
+});
+
+/// Schema commitment slot.
 pub static SCHEMA_COMMITMENT_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
     StorageSlotName::new("miden::standards::metadata::storage_schema")
         .expect("storage slot name should be valid")
 });
+
+// SLOT ACCESSORS
+// ================================================================================================
+
+/// Returns the [`StorageSlotName`] for token metadata (slot 0).
+pub fn token_metadata_slot() -> &'static StorageSlotName {
+    &TOKEN_METADATA_SLOT
+}
+
+/// Returns the [`StorageSlotName`] for owner config (slot 1).
+pub fn owner_config_slot() -> &'static StorageSlotName {
+    &OWNER_CONFIG_SLOT
+}
+
+// INFO COMPONENT
+// ================================================================================================
+
+/// A metadata component storing name and content URI in fixed value slots.
+///
+/// ## Storage Layout
+///
+/// - Slot 2–3: name (2 Words = 8 felts)
+/// - Slot 4–9: content_uri (6 Words = 24 felts)
+#[derive(Debug, Clone, Default)]
+pub struct Info {
+    name: Option<[Word; 2]>,
+    content_uri: Option<[Word; 6]>,
+}
+
+impl Info {
+    /// Creates a new empty metadata extension.
+    pub fn new() -> Self {
+        Self { name: None, content_uri: None }
+    }
+
+    /// Sets the name metadata (2 Words).
+    pub fn with_name(mut self, name: [Word; 2]) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    /// Sets the content URI metadata (6 Words).
+    pub fn with_content_uri(mut self, content_uri: [Word; 6]) -> Self {
+        self.content_uri = Some(content_uri);
+        self
+    }
+
+    /// Returns the slot name for name chunk 0 (slot 2).
+    pub fn name_chunk_0_slot() -> &'static StorageSlotName {
+        &NAME_CHUNK_0_SLOT
+    }
+
+    /// Returns the slot name for name chunk 1 (slot 3).
+    pub fn name_chunk_1_slot() -> &'static StorageSlotName {
+        &NAME_CHUNK_1_SLOT
+    }
+
+    /// Returns the slot name for a content URI chunk by index 0..5 (slots 4..9).
+    ///
+    /// # Panics
+    /// Panics if `index >= 6`.
+    pub fn content_uri_slot(index: usize) -> &'static StorageSlotName {
+        assert!(index < 6, "content_uri_slot index must be in 0..6, got {index}");
+        CONTENT_URI_SLOTS[index]
+    }
+
+    /// Reads the name and content URI from account storage.
+    ///
+    /// Returns `(name, content_uri)` where each is `Some` only if at least one word is non-zero.
+    pub fn read_name_and_content_uri_from_storage(
+        storage: &AccountStorage,
+    ) -> (Option<[Word; 2]>, Option<[Word; 6]>) {
+        // Read name
+        let name = if let (Ok(chunk_0), Ok(chunk_1)) = (
+            storage.get_item(Info::name_chunk_0_slot()),
+            storage.get_item(Info::name_chunk_1_slot()),
+        ) {
+            let name: [Word; 2] = [chunk_0, chunk_1];
+            if name != [Word::default(); 2] { Some(name) } else { None }
+        } else {
+            None
+        };
+
+        // Read content URI
+        let mut content_uri = [Word::default(); 6];
+        let mut any_set = false;
+        for (i, slot) in content_uri.iter_mut().enumerate() {
+            if let Ok(chunk) = storage.get_item(Info::content_uri_slot(i)) {
+                *slot = chunk;
+                if chunk != Word::default() {
+                    any_set = true;
+                }
+            }
+        }
+        let content_uri = if any_set { Some(content_uri) } else { None };
+
+        (name, content_uri)
+    }
+}
+
+impl From<Info> for AccountComponent {
+    fn from(extension: Info) -> Self {
+        let mut storage_slots: Vec<StorageSlot> = Vec::new();
+
+        if let Some(name) = extension.name {
+            storage_slots.push(StorageSlot::with_value(Info::name_chunk_0_slot().clone(), name[0]));
+            storage_slots.push(StorageSlot::with_value(Info::name_chunk_1_slot().clone(), name[1]));
+        }
+
+        if let Some(content_uri) = extension.content_uri {
+            for (i, word) in content_uri.iter().enumerate() {
+                storage_slots
+                    .push(StorageSlot::with_value(Info::content_uri_slot(i).clone(), *word));
+            }
+        }
+
+        let metadata = AccountComponentMetadata::new("miden::standards::metadata::info")
+            .with_description("Metadata info (name, content URI) in fixed value slots")
+            .with_supports_all_types();
+
+        AccountComponent::new(metadata_info_library(), storage_slots, metadata)
+            .expect("Info component should satisfy the requirements")
+    }
+}
+
+// SCHEMA COMMITMENT COMPONENT
+// ================================================================================================
 
 /// An [`AccountComponent`] exposing the account storage schema commitment.
 ///
@@ -119,8 +346,69 @@ mod tests {
     use miden_protocol::account::AccountBuilder;
     use miden_protocol::account::component::AccountComponentMetadata;
 
-    use super::AccountSchemaCommitment;
+    use super::{AccountSchemaCommitment, Info};
     use crate::account::auth::NoAuth;
+
+    #[test]
+    fn metadata_info_can_store_name_and_content_uri() {
+        let name = [Word::from([1u32, 2, 3, 4]), Word::from([5u32, 6, 7, 8])];
+        let content_uri = [
+            Word::from([10u32, 11, 12, 13]),
+            Word::from([14u32, 15, 16, 17]),
+            Word::from([18u32, 19, 20, 21]),
+            Word::from([22u32, 23, 24, 25]),
+            Word::from([26u32, 27, 28, 29]),
+            Word::from([30u32, 31, 32, 33]),
+        ];
+
+        let extension = Info::new().with_name(name).with_content_uri(content_uri);
+
+        let account = AccountBuilder::new([1u8; 32])
+            .with_auth_component(NoAuth)
+            .with_component(extension)
+            .build()
+            .unwrap();
+
+        // Verify name chunks
+        let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
+        let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
+        assert_eq!(name_0, name[0]);
+        assert_eq!(name_1, name[1]);
+
+        // Verify content URI chunks
+        for (i, expected) in content_uri.iter().enumerate() {
+            let chunk = account.storage().get_item(Info::content_uri_slot(i)).unwrap();
+            assert_eq!(chunk, *expected);
+        }
+    }
+
+    #[test]
+    fn metadata_info_empty_works() {
+        let extension = Info::new();
+
+        let _account = AccountBuilder::new([1u8; 32])
+            .with_auth_component(NoAuth)
+            .with_component(extension)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn metadata_info_name_only_works() {
+        let name = [Word::from([1u32, 2, 3, 4]), Word::from([5u32, 6, 7, 8])];
+        let extension = Info::new().with_name(name);
+
+        let account = AccountBuilder::new([1u8; 32])
+            .with_auth_component(NoAuth)
+            .with_component(extension)
+            .build()
+            .unwrap();
+
+        let name_0 = account.storage().get_item(Info::name_chunk_0_slot()).unwrap();
+        let name_1 = account.storage().get_item(Info::name_chunk_1_slot()).unwrap();
+        assert_eq!(name_0, name[0]);
+        assert_eq!(name_1, name[1]);
+    }
 
     #[test]
     fn storage_schema_commitment_is_order_independent() {

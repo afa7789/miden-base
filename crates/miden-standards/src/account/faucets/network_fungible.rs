@@ -17,7 +17,6 @@ use miden_protocol::account::{
     StorageSlotName,
 };
 use miden_protocol::asset::TokenSymbol;
-use miden_protocol::utils::sync::LazyLock;
 use miden_protocol::{Felt, Word};
 
 use super::{FungibleFaucetError, TokenMetadata};
@@ -45,11 +44,6 @@ procedure_digest!(
     NetworkFungibleFaucet::BURN_PROC_NAME,
     network_fungible_faucet_library
 );
-
-static OWNER_CONFIG_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::access::ownable::owner_config")
-        .expect("storage slot name should be valid")
-});
 
 /// An [`AccountComponent`] implementing a network fungible faucet.
 ///
@@ -164,15 +158,15 @@ impl NetworkFungibleFaucet {
     // PUBLIC ACCESSORS
     // --------------------------------------------------------------------------------------------
 
-    /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s metadata is stored.
+    /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s metadata is stored (slot 0).
     pub fn metadata_slot() -> &'static StorageSlotName {
         TokenMetadata::metadata_slot()
     }
 
     /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s owner configuration is
-    /// stored.
+    /// stored (slot 1).
     pub fn owner_config_slot() -> &'static StorageSlotName {
-        &OWNER_CONFIG_SLOT_NAME
+        crate::account::metadata::owner_config_slot()
     }
 
     /// Returns the storage slot schema for the metadata slot.

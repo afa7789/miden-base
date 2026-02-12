@@ -10,6 +10,10 @@ use ::miden::protocol::asset::FUNGIBLE_ASSET_MAX_AMOUNT
 
 const PRIVATE_NOTE=2
 
+# Token metadata slot — duplicated here so distribute can read it via exec without
+# going through the call-safe get_max_supply wrapper.
+const TOKEN_METADATA_SLOT = word("miden::standards::metadata::0")
+
 # ERRORS
 # =================================================================================================
 
@@ -22,6 +26,8 @@ const ERR_FUNGIBLE_ASSET_DISTRIBUTE_AMOUNT_EXCEEDS_MAX_SUPPLY="token_supply plus
 const ERR_FAUCET_BURN_AMOUNT_EXCEEDS_TOKEN_SUPPLY="asset amount to burn exceeds the existing token supply"
 
 const ERR_BASIC_FUNGIBLE_BURN_WRONG_NUMBER_OF_ASSETS="burn requires exactly 1 note asset"
+
+const ERR_FAUCET_STATE_INVALID="faucet state invalid: total issuance exceeds max supply"
 
 # CONSTANTS
 # =================================================================================================
@@ -67,19 +73,9 @@ pub proc distribute
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
     # Assert that minting does not violate any supply constraints.
-    #
-    # To make sure we cannot mint more than intended, we need to check:
-    # 1) (max_supply - token_supply) <= max_supply, i.e. the subtraction does not wrap around
-    # 2) amount + token_supply does not exceed max_supply
-    # 3) amount + token_supply is less than FUNGIBLE_ASSET_MAX_AMOUNT
-    #
-    # This is done with the following concrete assertions:
-    # - assert token_supply <= max_supply which ensures 1)
-    # - assert max_supply <= FUNGIBLE_ASSET_MAX_AMOUNT to help ensure 3)
-    # - assert amount <= max_mint_amount to ensure 2) as well as 3)
-    #   - this ensures 3) because token_supply + max_mint_amount at most ends up being equal to
-    #     max_supply and we already asserted that max_supply does not exceed
-    #     FUNGIBLE_ASSET_MAX_AMOUNT
+    # - assert token_supply <= max_supply (incl. ERR_FAUCET_STATE_INVALID: state not corrupted)
+    # - assert max_supply <= FUNGIBLE_ASSET_MAX_AMOUNT
+    # - assert amount <= max_mint_amount
     # ---------------------------------------------------------------------------------------------
 
     dup.1 dup.1
@@ -87,6 +83,10 @@ pub proc distribute
 
     # assert that token_supply <= max_supply
     lte assert.err=ERR_FUNGIBLE_ASSET_TOKEN_SUPPLY_EXCEEDS_MAX_SUPPLY
+    # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
+
+    # defense in depth: assert total_issuance <= max_supply (state not corrupted)
+    dup.1 dup.1 gte assert.err=ERR_FAUCET_STATE_INVALID
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
     # assert max_supply <= FUNGIBLE_ASSET_MAX_AMOUNT

@@ -7,6 +7,11 @@ pub use ::miden::standards::faucets::network_fungible::burn
 pub use ::miden::standards::faucets::network_fungible::transfer_ownership
 pub use ::miden::standards::faucets::network_fungible::renounce_ownership
 
-# Metadata extension - allows reading name and content URI
-pub use ::miden::standards::metadata::info::get_name
-pub use ::miden::standards::metadata::info::get_content_uri
+# Metadata — all getters in one place (owner, name, content URI, token metadata)
+pub use ::miden::standards::metadata::get_owner
+pub use ::miden::standards::metadata::get_name
+pub use ::miden::standards::metadata::get_content_uri
+pub use ::miden::standards::metadata::get_token_metadata
+pub use ::miden::standards::metadata::get_max_supply
+pub use ::miden::standards::metadata::get_decimals
+pub use ::miden::standards::metadata::get_token_symbol
