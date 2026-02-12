@@ -1,6 +1,14 @@
-# Metadata Info Component
+# Account component: Metadata Info (name + content URI)
 #
-# Re-exports name and content URI getters from the metadata module.
+# Defines the public interface of the standalone Info component — which procedures
+# are callable on accounts that include this component.  The actual implementation
+# lives in `miden::standards::metadata` (standards library); this file only
+# re-exports the relevant subset.
+#
+# For fungible faucets the same getters are already re-exported by the faucet
+# component (basic_fungible_faucet / network_fungible_faucet), so adding Info
+# alongside a faucet is unnecessary.  This standalone component exists for
+# non-faucet accounts (e.g. future NFTs) that want name + content URI metadata.
 
 pub use ::miden::standards::metadata::get_name
 pub use ::miden::standards::metadata::get_content_uri

@@ -5,15 +5,16 @@
 //!
 //! ## Storage layout
 //!
-//! | Slot | Name | Contents |
-//! |------|------|----------|
-//! | 0 | `token_metadata` | `[max_supply, decimals, token_symbol, 0]` |
-//! | 1 | `owner_config` | owner account id |
-//! | 2 | `name_chunk_0` | first 4 felts of name |
-//! | 3 | `name_chunk_1` | last 4 felts of name |
-//! | 4–9 | `content_uri_0..5` | content URI (6 Words, 24 felts) |
+//! | Slot name | Contents |
+//! |-----------|----------|
+//! | `metadata::token_metadata` | `[max_supply, decimals, token_symbol, 0]` |
+//! | `ownable::owner_config` | owner account id (defined by ownable module) |
+//! | `metadata::name_0` | first 4 felts of name |
+//! | `metadata::name_1` | last 4 felts of name |
+//! | `metadata::content_uri_0..5` | content URI (6 Words, 24 felts) |
 //!
-//! Slot names follow the pattern `miden::standards::metadata::{0..9}`.
+//! Slot names use the `miden::standards::metadata::*` namespace, except for the
+//! owner which is defined by the ownable module (`miden::standards::access::ownable::owner_config`).
 //!
 //! Layout sync: the same layout is defined in MASM at `asm/standards/metadata/mod.masm`.
 //! Any change to slot indices or names must be applied in both Rust and MASM.
@@ -43,58 +44,61 @@ use miden_protocol::account::{
 use miden_protocol::errors::ComponentMetadataError;
 use miden_protocol::utils::sync::LazyLock;
 
-use crate::account::components::{metadata_info_library, storage_schema_library};
+use crate::account::components::{metadata_info_component_library, storage_schema_library};
 
 // CONSTANTS — canonical layout: slots 0–9
 // ================================================================================================
 
-/// Slot 0: token_metadata (max_supply, decimals, token_symbol, 0).
+/// Token metadata: `[max_supply, decimals, token_symbol, 0]`.
 pub static TOKEN_METADATA_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::0")
+    StorageSlotName::new("miden::standards::metadata::token_metadata")
         .expect("storage slot name should be valid")
 });
 
-/// Slot 1: owner_config.
+/// Owner config — defined by the ownable module (`miden::standards::access::ownable`).
+/// Referenced here so that faucets and other metadata consumers can locate the owner
+/// through a single `metadata::owner_config_slot()` accessor, without depending on
+/// the ownable module directly.
 pub static OWNER_CONFIG_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::1")
+    StorageSlotName::new("miden::standards::access::ownable::owner_config")
         .expect("storage slot name should be valid")
 });
 
-/// Slot 2: name chunk 0.
+/// Name chunk 0 (first 4 felts of the token name).
 pub static NAME_CHUNK_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::2")
+    StorageSlotName::new("miden::standards::metadata::name_0")
         .expect("storage slot name should be valid")
 });
 
-/// Slot 3: name chunk 1.
+/// Name chunk 1 (last 4 felts of the token name).
 pub static NAME_CHUNK_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::3")
+    StorageSlotName::new("miden::standards::metadata::name_1")
         .expect("storage slot name should be valid")
 });
 
-/// Slots 4..9: content_uri_0 .. content_uri_5.
+/// Content URI chunks 0–5 (6 Words = 24 felts).
 pub static CONTENT_URI_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::4")
+    StorageSlotName::new("miden::standards::metadata::content_uri_0")
         .expect("storage slot name should be valid")
 });
 pub static CONTENT_URI_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::5")
+    StorageSlotName::new("miden::standards::metadata::content_uri_1")
         .expect("storage slot name should be valid")
 });
 pub static CONTENT_URI_2_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::6")
+    StorageSlotName::new("miden::standards::metadata::content_uri_2")
         .expect("storage slot name should be valid")
 });
 pub static CONTENT_URI_3_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::7")
+    StorageSlotName::new("miden::standards::metadata::content_uri_3")
         .expect("storage slot name should be valid")
 });
 pub static CONTENT_URI_4_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::8")
+    StorageSlotName::new("miden::standards::metadata::content_uri_4")
         .expect("storage slot name should be valid")
 });
 pub static CONTENT_URI_5_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::9")
+    StorageSlotName::new("miden::standards::metadata::content_uri_5")
         .expect("storage slot name should be valid")
 });
 
@@ -235,7 +239,7 @@ impl From<Info> for AccountComponent {
             .with_description("Metadata info (name, content URI) in fixed value slots")
             .with_supports_all_types();
 
-        AccountComponent::new(metadata_info_library(), storage_slots, metadata)
+        AccountComponent::new(metadata_info_component_library(), storage_slots, metadata)
             .expect("Info component should satisfy the requirements")
     }
 }

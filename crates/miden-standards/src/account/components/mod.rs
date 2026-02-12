@@ -120,8 +120,9 @@ static STORAGE_SCHEMA_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     Library::read_from_bytes(bytes).expect("Shipped Storage Schema library is well-formed")
 });
 
-// Initialize the Metadata Info library only once.
-static METADATA_INFO_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+// Initialize the Metadata Info component library only once.
+// See `asm/account_components/metadata/info.masm` for details on why this exists.
+static METADATA_INFO_COMPONENT_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     let bytes =
         include_bytes!(concat!(env!("OUT_DIR"), "/assets/account_components/metadata/info.masl"));
     Library::read_from_bytes(bytes).expect("Shipped Metadata Info library is well-formed")
@@ -147,9 +148,13 @@ pub fn storage_schema_library() -> Library {
     STORAGE_SCHEMA_LIBRARY.clone()
 }
 
-/// Returns the Metadata Info Library.
-pub fn metadata_info_library() -> Library {
-    METADATA_INFO_LIBRARY.clone()
+/// Returns the Metadata Info component library.
+///
+/// This is the MASL compiled from `account_components/metadata/info.masm`.
+/// It defines which procedures the standalone [`Info`](crate::account::metadata::Info)
+/// component exposes (get_name, get_content_uri).
+pub fn metadata_info_component_library() -> Library {
+    METADATA_INFO_COMPONENT_LIBRARY.clone()
 }
 
 /// Returns the ECDSA K256 Keccak Library.

@@ -12,7 +12,7 @@ const PRIVATE_NOTE=2
 
 # Token metadata slot — duplicated here so distribute can read it via exec without
 # going through the call-safe get_max_supply wrapper.
-const TOKEN_METADATA_SLOT = word("miden::standards::metadata::0")
+const TOKEN_METADATA_SLOT = word("miden::standards::metadata::token_metadata")
 
 # ERRORS
 # =================================================================================================

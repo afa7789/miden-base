@@ -8,21 +8,23 @@ use miden::protocol::active_account
 use miden::standards::access::ownable
 
 # =================================================================================================
-# CONSTANTS — canonical layout: value slots 0..9
+# CONSTANTS — slot names are descriptive, not sequential indices
 # =================================================================================================
-# Slot 0: token_metadata  | Slot 1: owner_config | Slots 2-3: name | Slots 4-9: content_uri
+# token_metadata | owner_config (ownable) | name_0, name_1 | content_uri_0..5
 # =================================================================================================
 
-const TOKEN_METADATA_SLOT = word("miden::standards::metadata::0")
-const OWNER_CONFIG_SLOT = word("miden::standards::metadata::1")
-const NAME_CHUNK_0_SLOT = word("miden::standards::metadata::2")
-const NAME_CHUNK_1_SLOT = word("miden::standards::metadata::3")
-const CONTENT_URI_0_SLOT = word("miden::standards::metadata::4")
-const CONTENT_URI_1_SLOT = word("miden::standards::metadata::5")
-const CONTENT_URI_2_SLOT = word("miden::standards::metadata::6")
-const CONTENT_URI_3_SLOT = word("miden::standards::metadata::7")
-const CONTENT_URI_4_SLOT = word("miden::standards::metadata::8")
-const CONTENT_URI_5_SLOT = word("miden::standards::metadata::9")
+const TOKEN_METADATA_SLOT = word("miden::standards::metadata::token_metadata")
+# Owner slot — defined by the ownable module; referenced here for layout documentation.
+# The re-exported get_owner proc uses ownable's own constant, not this one.
+const OWNER_CONFIG_SLOT = word("miden::standards::access::ownable::owner_config")
+const NAME_CHUNK_0_SLOT = word("miden::standards::metadata::name_0")
+const NAME_CHUNK_1_SLOT = word("miden::standards::metadata::name_1")
+const CONTENT_URI_0_SLOT = word("miden::standards::metadata::content_uri_0")
+const CONTENT_URI_1_SLOT = word("miden::standards::metadata::content_uri_1")
+const CONTENT_URI_2_SLOT = word("miden::standards::metadata::content_uri_2")
+const CONTENT_URI_3_SLOT = word("miden::standards::metadata::content_uri_3")
+const CONTENT_URI_4_SLOT = word("miden::standards::metadata::content_uri_4")
+const CONTENT_URI_5_SLOT = word("miden::standards::metadata::content_uri_5")
 
 # Local memory indices for get_name
 const CHUNK_1_LOC = 0
