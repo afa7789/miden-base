@@ -85,7 +85,9 @@ pub proc distribute
     lte assert.err=ERR_FUNGIBLE_ASSET_TOKEN_SUPPLY_EXCEEDS_MAX_SUPPLY
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
-    # defense in depth: assert total_issuance <= max_supply (state not corrupted)
+    # defense in depth: assert total_issuance <= max_supply (state not corrupted).
+    # After dup.1 dup.1 the top two elements are [total_issuance, max_supply, ...].
+    # gte pops both and checks (second >= top), i.e. max_supply >= total_issuance.
     dup.1 dup.1 gte assert.err=ERR_FAUCET_STATE_INVALID
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 

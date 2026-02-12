@@ -64,53 +64,23 @@ pub static OWNER_CONFIG_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
         .expect("storage slot name should be valid")
 });
 
-/// Name chunk 0 (first 4 felts of the token name).
-pub static NAME_CHUNK_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::name_0")
-        .expect("storage slot name should be valid")
-});
-
-/// Name chunk 1 (last 4 felts of the token name).
-pub static NAME_CHUNK_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::name_1")
-        .expect("storage slot name should be valid")
-});
-
-/// Content URI chunks 0–5 (6 Words = 24 felts).
-pub static CONTENT_URI_0_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_0")
-        .expect("storage slot name should be valid")
-});
-pub static CONTENT_URI_1_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_1")
-        .expect("storage slot name should be valid")
-});
-pub static CONTENT_URI_2_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_2")
-        .expect("storage slot name should be valid")
-});
-pub static CONTENT_URI_3_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_3")
-        .expect("storage slot name should be valid")
-});
-pub static CONTENT_URI_4_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_4")
-        .expect("storage slot name should be valid")
-});
-pub static CONTENT_URI_5_SLOT: LazyLock<StorageSlotName> = LazyLock::new(|| {
-    StorageSlotName::new("miden::standards::metadata::content_uri_5")
-        .expect("storage slot name should be valid")
-});
-
-/// All content URI slot names, indexed 0..5 (storage slots 4..9).
-pub static CONTENT_URI_SLOTS: LazyLock<[&'static StorageSlotName; 6]> = LazyLock::new(|| {
+/// Token name (2 Words = 8 felts), split across 2 slots.
+pub static NAME_SLOTS: LazyLock<[StorageSlotName; 2]> = LazyLock::new(|| {
     [
-        &*CONTENT_URI_0_SLOT,
-        &*CONTENT_URI_1_SLOT,
-        &*CONTENT_URI_2_SLOT,
-        &*CONTENT_URI_3_SLOT,
-        &*CONTENT_URI_4_SLOT,
-        &*CONTENT_URI_5_SLOT,
+        StorageSlotName::new("miden::standards::metadata::name_0").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::name_1").expect("valid slot name"),
+    ]
+});
+
+/// Content URI (6 Words = 24 felts), split across 6 slots.
+pub static CONTENT_URI_SLOTS: LazyLock<[StorageSlotName; 6]> = LazyLock::new(|| {
+    [
+        StorageSlotName::new("miden::standards::metadata::content_uri_0").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::content_uri_1").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::content_uri_2").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::content_uri_3").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::content_uri_4").expect("valid slot name"),
+        StorageSlotName::new("miden::standards::metadata::content_uri_5").expect("valid slot name"),
     ]
 });
 
@@ -166,23 +136,23 @@ impl Info {
         self
     }
 
-    /// Returns the slot name for name chunk 0 (slot 2).
+    /// Returns the slot name for name chunk 0.
     pub fn name_chunk_0_slot() -> &'static StorageSlotName {
-        &NAME_CHUNK_0_SLOT
+        &NAME_SLOTS[0]
     }
 
-    /// Returns the slot name for name chunk 1 (slot 3).
+    /// Returns the slot name for name chunk 1.
     pub fn name_chunk_1_slot() -> &'static StorageSlotName {
-        &NAME_CHUNK_1_SLOT
+        &NAME_SLOTS[1]
     }
 
-    /// Returns the slot name for a content URI chunk by index 0..5 (slots 4..9).
+    /// Returns the slot name for a content URI chunk by index (0..6).
     ///
     /// # Panics
     /// Panics if `index >= 6`.
     pub fn content_uri_slot(index: usize) -> &'static StorageSlotName {
         assert!(index < 6, "content_uri_slot index must be in 0..6, got {index}");
-        CONTENT_URI_SLOTS[index]
+        &CONTENT_URI_SLOTS[index]
     }
 
     /// Reads the name and content URI from account storage.
