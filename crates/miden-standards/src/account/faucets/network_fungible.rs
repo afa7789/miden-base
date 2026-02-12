@@ -158,7 +158,8 @@ impl NetworkFungibleFaucet {
     // PUBLIC ACCESSORS
     // --------------------------------------------------------------------------------------------
 
-    /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s metadata is stored (slot 0).
+    /// Returns the [`StorageSlotName`] where the [`NetworkFungibleFaucet`]'s metadata is stored
+    /// (slot 0).
     pub fn metadata_slot() -> &'static StorageSlotName {
         TokenMetadata::metadata_slot()
     }

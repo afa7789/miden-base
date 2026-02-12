@@ -14,7 +14,8 @@
 //! | `metadata::content_uri_0..5` | content URI (6 Words, 24 felts) |
 //!
 //! Slot names use the `miden::standards::metadata::*` namespace, except for the
-//! owner which is defined by the ownable module (`miden::standards::access::ownable::owner_config`).
+//! owner which is defined by the ownable module
+//! (`miden::standards::access::ownable::owner_config`).
 //!
 //! Layout sync: the same layout is defined in MASM at `asm/standards/metadata/mod.masm`.
 //! Any change to slot indices or names must be applied in both Rust and MASM.
@@ -38,9 +39,7 @@ use alloc::vec::Vec;
 
 use miden_protocol::Word;
 use miden_protocol::account::component::{AccountComponentMetadata, StorageSchema};
-use miden_protocol::account::{
-    AccountComponent, AccountStorage, StorageSlot, StorageSlotName,
-};
+use miden_protocol::account::{AccountComponent, AccountStorage, StorageSlot, StorageSlotName};
 use miden_protocol::errors::ComponentMetadataError;
 use miden_protocol::utils::sync::LazyLock;
 
@@ -147,11 +146,7 @@ impl Info {
     }
 
     /// Returns the slot name for a content URI chunk by index (0..6).
-    ///
-    /// # Panics
-    /// Panics if `index >= 6`.
     pub fn content_uri_slot(index: usize) -> &'static StorageSlotName {
-        assert!(index < 6, "content_uri_slot index must be in 0..6, got {index}");
         &CONTENT_URI_SLOTS[index]
     }
 

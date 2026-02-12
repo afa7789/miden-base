@@ -208,7 +208,7 @@ fn metadata_info_with_faucet_storage() {
     assert_storage_name_and_content_uri(&account, name, &content_uri);
 }
 
-/// Tests that BasicFungibleFaucet with integrated name/content_uri works correctly.
+/// Tests that BasicFungibleFaucet with Info component (name/content_uri) works correctly.
 #[test]
 fn faucet_with_integrated_metadata() {
     use miden_protocol::Felt;
@@ -230,19 +230,15 @@ fn faucet_with_integrated_metadata() {
         6,                  // decimals
         Felt::new(500_000), // max_supply
     )
-    .unwrap()
-    .with_name(name)
-    .with_content_uri(content_uri);
-
-    // Verify the getters work
-    assert_eq!(faucet.name(), Some(name));
-    assert_eq!(faucet.content_uri(), Some(content_uri));
+    .unwrap();
+    let extension = Info::new().with_name(name).with_content_uri(content_uri);
 
     let account = AccountBuilder::new([2u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
         .storage_mode(AccountStorageMode::Public)
         .with_auth_component(NoAuth)
         .with_component(faucet)
+        .with_component(extension)
         .build()
         .unwrap();
 
@@ -253,10 +249,8 @@ fn faucet_with_integrated_metadata() {
 
     assert_storage_name_and_content_uri(&account, name, &content_uri);
 
-    // Verify the faucet can be recovered from the account
+    // Verify the faucet can be recovered from the account (metadata only; name/uri are in Info)
     let recovered_faucet = BasicFungibleFaucet::try_from(&account).unwrap();
-    assert_eq!(recovered_faucet.name(), Some(name));
-    assert_eq!(recovered_faucet.content_uri(), Some(content_uri));
     assert_eq!(recovered_faucet.max_supply(), Felt::new(500_000));
     assert_eq!(recovered_faucet.decimals(), 6);
 }
@@ -273,8 +267,7 @@ async fn faucet_get_decimals_and_symbol_from_masm() -> anyhow::Result<()> {
     let decimals: u8 = 8;
     let max_supply = Felt::new(1_000_000);
 
-    let faucet = BasicFungibleFaucet::new(token_symbol, decimals, max_supply)
-        .unwrap();
+    let faucet = BasicFungibleFaucet::new(token_symbol, decimals, max_supply).unwrap();
 
     let account = AccountBuilder::new([4u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
@@ -348,18 +341,18 @@ async fn faucet_metadata_readable_from_masm() -> anyhow::Result<()> {
         10,                 // decimals
         Felt::new(999_999), // max_supply
     )
-    .unwrap()
-    .with_name(name)
-    .with_content_uri(content_uri);
+    .unwrap();
+    let extension = Info::new().with_name(name).with_content_uri(content_uri);
 
     let account = AccountBuilder::new([3u8; 32])
         .account_type(miden_protocol::account::AccountType::FungibleFaucet)
         .storage_mode(AccountStorageMode::Public)
         .with_auth_component(NoAuth)
         .with_component(faucet)
+        .with_component(extension)
         .build()?;
 
-    // MASM script to read name and full content URI via the extension procedures and verify
+    // MASM script to read name and full content URI via the metadata procedures and verify
     let tx_script = format!(
         r#"
         begin

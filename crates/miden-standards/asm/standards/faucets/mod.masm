@@ -27,8 +27,6 @@ const ERR_FAUCET_BURN_AMOUNT_EXCEEDS_TOKEN_SUPPLY="asset amount to burn exceeds 
 
 const ERR_BASIC_FUNGIBLE_BURN_WRONG_NUMBER_OF_ASSETS="burn requires exactly 1 note asset"
 
-const ERR_FAUCET_STATE_INVALID="faucet state invalid: total issuance exceeds max supply"
-
 # CONSTANTS
 # =================================================================================================
 
@@ -73,7 +71,7 @@ pub proc distribute
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
     # Assert that minting does not violate any supply constraints.
-    # - assert token_supply <= max_supply (incl. ERR_FAUCET_STATE_INVALID: state not corrupted)
+    # - assert token_supply <= max_supply
     # - assert max_supply <= FUNGIBLE_ASSET_MAX_AMOUNT
     # - assert amount <= max_mint_amount
     # ---------------------------------------------------------------------------------------------
@@ -83,12 +81,6 @@ pub proc distribute
 
     # assert that token_supply <= max_supply
     lte assert.err=ERR_FUNGIBLE_ASSET_TOKEN_SUPPLY_EXCEEDS_MAX_SUPPLY
-    # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
-
-    # defense in depth: assert total_issuance <= max_supply (state not corrupted).
-    # After dup.1 dup.1 the top two elements are [total_issuance, max_supply, ...].
-    # gte pops both and checks (second >= top), i.e. max_supply >= total_issuance.
-    dup.1 dup.1 gte assert.err=ERR_FAUCET_STATE_INVALID
     # => [max_supply, token_supply, amount, tag, note_type, RECIPIENT]
 
     # assert max_supply <= FUNGIBLE_ASSET_MAX_AMOUNT
