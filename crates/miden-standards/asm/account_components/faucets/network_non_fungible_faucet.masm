@@ -1,0 +1,101 @@
+# The MASM code of the Network Non-Fungible Faucet Account Component.
+#
+# See the `NetworkNonFungibleFaucet` Rust type's documentation for more details.
+
+use miden::standards::faucets::non_fungible
+use miden::standards::access::ownable
+
+# OWNER MANAGEMENT
+# ================================================================================================
+
+#! Returns the owner AccountId.
+#!
+#! Inputs:  []
+#! Outputs: [owner_prefix, owner_suffix, pad(14)]
+#!
+#! Invocation: call
+pub use ownable::get_owner
+
+#! Transfers ownership to a new account.
+#!
+#! Can only be called by the current owner.
+#!
+#! Inputs:  [new_owner_prefix, new_owner_suffix, pad(14)]
+#! Outputs: [pad(16)]
+#!
+#! Where:
+#! - new_owner_{prefix, suffix} are the prefix and suffix felts of the new owner AccountId.
+#!
+#! Panics if:
+#! - the note sender is not the owner.
+#!
+#! Invocation: call
+pub use ownable::transfer_ownership
+
+#! Renounces ownership, leaving the component without an owner.
+#!
+#! Can only be called by the current owner.
+#!
+#! Inputs:  [pad(16)]
+#! Outputs: [pad(16)]
+#!
+#! Panics if:
+#! - the note sender is not the owner.
+#!
+#! Invocation: call
+pub use ownable::renounce_ownership
+
+# ASSET DISTRIBUTION
+# ================================================================================================
+
+#! Distributes a freshly minted non-fungible asset to the provided recipient.
+#!
+#! This procedure first checks if the note sender is the owner of the faucet, and then
+#! mints the asset and creates an output note with that asset for the recipient.
+#!
+#! Inputs:  [DATA_HASH, tag, note_type, RECIPIENT, pad(6)]
+#! Outputs: [note_idx, pad(15)]
+#!
+#! Where:
+#! - DATA_HASH is the hash of the user-provided NFT data (4 felts).
+#! - tag is the tag to be included in the note.
+#! - note_type is the type of the note that holds the asset.
+#! - RECIPIENT is the recipient of the asset.
+#! - note_idx is the index of the created note.
+#!
+#! Panics if:
+#! - the note sender is not the owner of this faucet.
+#! - any of the validations in non_fungible::distribute fail.
+#!
+#! Invocation: call
+pub proc distribute
+    exec.ownable::verify_owner
+    # => [DATA_HASH, tag, note_type, RECIPIENT, pad(6)]
+
+    exec.non_fungible::distribute
+    # => [note_idx, pad(15)]
+end
+
+#! Burns the non-fungible asset from the active note.
+#!
+#! This procedure retrieves the asset from the active note and burns it. The note must contain
+#! exactly one asset, which must be a non-fungible asset issued by this faucet.
+#!
+#! Inputs:  [pad(16)]
+#! Outputs: [pad(16)]
+#!
+#! Panics if:
+#! - the procedure is not called from a note context.
+#! - the note does not contain exactly one asset.
+#! - the transaction is executed against an account which is not a non-fungible asset faucet.
+#! - the transaction is executed against a faucet which is not the origin of the specified asset.
+#! - the current supply is already zero.
+#!
+#! Invocation: call
+pub use non_fungible::burn
+
+#! Returns the data hash for a given token_id from the token registry.
+#!
+#! Inputs:  [token_id, pad(15)]
+#! Outputs: [DATA_HASH, pad(12)]
+pub use non_fungible::get_token_data

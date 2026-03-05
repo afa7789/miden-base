@@ -25,6 +25,12 @@ pub enum AccountComponentInterface {
     /// [`NetworkFungibleFaucet`][crate::account::faucets::NetworkFungibleFaucet] module.
     NetworkFungibleFaucet,
     /// Exposes procedures from the
+    /// [`BasicNonFungibleFaucet`][crate::account::faucets::BasicNonFungibleFaucet] module.
+    BasicNonFungibleFaucet,
+    /// Exposes procedures from the
+    /// [`NetworkNonFungibleFaucet`][crate::account::faucets::NetworkNonFungibleFaucet] module.
+    NetworkNonFungibleFaucet,
+    /// Exposes procedures from the
     /// [`AuthSingleSig`][crate::account::auth::AuthSingleSig] module.
     AuthSingleSig,
     /// Exposes procedures from the
@@ -57,6 +63,12 @@ impl AccountComponentInterface {
             AccountComponentInterface::BasicFungibleFaucet => "Basic Fungible Faucet".to_string(),
             AccountComponentInterface::NetworkFungibleFaucet => {
                 "Network Fungible Faucet".to_string()
+            },
+            AccountComponentInterface::BasicNonFungibleFaucet => {
+                "Basic Non-Fungible Faucet".to_string()
+            },
+            AccountComponentInterface::NetworkNonFungibleFaucet => {
+                "Network Non-Fungible Faucet".to_string()
             },
             AccountComponentInterface::AuthSingleSig => "SingleSig".to_string(),
             AccountComponentInterface::AuthSingleSigAcl => "SingleSig ACL".to_string(),

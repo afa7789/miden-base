@@ -12,9 +12,11 @@ use crate::AuthMethod;
 use crate::account::components::{
     StandardAccountComponent,
     basic_fungible_faucet_library,
+    basic_non_fungible_faucet_library,
     basic_wallet_library,
     multisig_library,
     network_fungible_faucet_library,
+    network_non_fungible_faucet_library,
     no_auth_library,
     singlesig_acl_library,
     singlesig_library,
@@ -98,6 +100,16 @@ impl AccountInterfaceExt for AccountInterface {
                 AccountComponentInterface::NetworkFungibleFaucet => {
                     component_proc_digests.extend(
                         network_fungible_faucet_library().mast_forest().procedure_digests(),
+                    );
+                },
+                AccountComponentInterface::BasicNonFungibleFaucet => {
+                    component_proc_digests.extend(
+                        basic_non_fungible_faucet_library().mast_forest().procedure_digests(),
+                    );
+                },
+                AccountComponentInterface::NetworkNonFungibleFaucet => {
+                    component_proc_digests.extend(
+                        network_non_fungible_faucet_library().mast_forest().procedure_digests(),
                     );
                 },
                 AccountComponentInterface::AuthSingleSig => {

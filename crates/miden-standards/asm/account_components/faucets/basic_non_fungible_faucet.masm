@@ -1,0 +1,44 @@
+# The MASM code of the Basic Non-Fungible Faucet Account Component.
+#
+# See the `BasicNonFungibleFaucet` Rust type's documentation for more details.
+
+use miden::standards::faucets::non_fungible
+
+# PROCEDURES
+# =================================================================================================
+
+#! Distributes a freshly minted non-fungible asset to the provided recipient.
+#!
+#! Inputs:  [DATA_HASH, tag, note_type, RECIPIENT, pad(6)]
+#! Outputs: [note_idx, pad(15)]
+#!
+#! Panics if:
+#! - any of the validations in non_fungible::distribute fail.
+#!
+#! Invocation: call
+pub proc distribute
+    exec.non_fungible::distribute
+    # => [note_idx, pad(15)]
+end
+
+#! Burns the non-fungible asset from the active note.
+#!
+#! This procedure retrieves the asset from the active note and burns it. The note must contain
+#! exactly one asset, which must be a non-fungible asset issued by this faucet.
+#!
+#! Inputs:  [pad(16)]
+#! Outputs: [pad(16)]
+#!
+#! Panics if:
+#! - the procedure is not called from a note context.
+#! - the note does not contain exactly one asset.
+#! - the transaction is executed against an account which is not a non-fungible asset faucet.
+#! - the transaction is executed against a faucet which is not the origin of the specified asset.
+#! - the current supply is already zero.
+pub use non_fungible::burn
+
+#! Returns the data hash for a given token_id from the token registry.
+#!
+#! Inputs:  [token_id, pad(15)]
+#! Outputs: [DATA_HASH, pad(12)]
+pub use non_fungible::get_token_data

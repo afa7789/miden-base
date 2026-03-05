@@ -1,0 +1,253 @@
+# NON-FUNGIBLE FAUCET STANDARDS LIBRARY
+#
+# Core distribute/burn/query logic for non-fungible faucets.
+# Mirrors standards/faucets/mod.masm (fungible faucet logic).
+# =================================================================================================
+
+use miden::protocol::active_account
+use miden::protocol::active_note
+use miden::protocol::faucet
+use miden::protocol::native_account
+use miden::protocol::output_note
+
+# ERRORS
+# =================================================================================================
+
+const ERR_NFT_SUPPLY_EXCEEDS_MAX_SUPPLY="current NFT supply exceeds max supply"
+
+const ERR_NFT_MAX_SUPPLY_REACHED="cannot mint NFT: max supply reached"
+
+const ERR_NFT_BURN_WRONG_NUMBER_OF_ASSETS="NFT burn requires exactly 1 note asset"
+
+const ERR_NFT_BURN_SUPPLY_UNDERFLOW="NFT burn would reduce supply below zero"
+
+# CONSTANTS
+# =================================================================================================
+
+# Local memory addresses for temporary storage during procedures.
+const METADATA_LOCAL=0
+const DATA_HASH_LOCAL=4
+
+# The standard slot where NFT faucet metadata is stored.
+# Layout: [current_supply, max_supply, next_token_id, symbol]
+const NFT_METADATA_SLOT=word("miden::standards::nft::metadata")
+
+# The standard slot for the token registry StorageMap.
+# Key: [token_id, 0, 0, 0], Value: [hash0, hash1, hash2, hash3]
+const NFT_TOKEN_MAP_SLOT=word("miden::standards::nft::tokens")
+
+# PROCEDURES
+# =================================================================================================
+
+#! Distributes a freshly minted non-fungible asset to the provided recipient by creating a note.
+#!
+#! Computes asset_data = hash(user_data_commitment, next_token_id) for uniqueness by construction,
+#! writes the token registry, mints the asset, and creates a P2ID output note.
+#!
+#! Inputs:  [DATA_HASH, tag, note_type, RECIPIENT]
+#! Outputs: [note_idx]
+#!
+#! Where:
+#! - DATA_HASH is the hash of the user-provided NFT data (4 felts).
+#! - tag is the tag to be included in the note.
+#! - note_type is the type of the note that holds the asset.
+#! - RECIPIENT is the recipient of the asset, i.e.,
+#!   hash(hash(hash(serial_num, [0; 4]), script_root), storage_commitment).
+#! - note_idx is the index of the created note.
+#!
+#! Panics if:
+#! - the active account is not a non-fungible faucet.
+#! - current_supply >= max_supply.
+#! - the token supply exceeds the maximum supply (invariant violation).
+#!
+#! Invocation: exec
+@locals(8)
+pub proc distribute
+    # Save the user data hash to local memory for later use in hmerge.
+    # -----------------------------------------------------------------------------------------
+    loc_storew_be.DATA_HASH_LOCAL
+    # => [DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Load NFT metadata: [current_supply, max_supply, next_token_id, symbol]
+    # -----------------------------------------------------------------------------------------
+    push.NFT_METADATA_SLOT[0..2] exec.active_account::get_item
+    # => [symbol, next_token_id, max_supply, current_supply, DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Save full metadata word to local memory for the update later.
+    loc_storew_be.METADATA_LOCAL
+    # => [symbol, next_token_id, max_supply, current_supply, DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Assert supply constraints: current_supply < max_supply
+    # -----------------------------------------------------------------------------------------
+    drop drop
+    # => [max_supply, current_supply, DATA_HASH, tag, note_type, RECIPIENT]
+
+    dup.1 dup.1
+    # => [max_supply, current_supply, max_supply, current_supply, DATA_HASH, ...]
+
+    # assert current_supply <= max_supply (invariant)
+    lte assert.err=ERR_NFT_SUPPLY_EXCEEDS_MAX_SUPPLY
+    # => [max_supply, current_supply, DATA_HASH, ...]
+
+    # assert current_supply < max_supply (room to mint)
+    dup.1 neq assert.err=ERR_NFT_MAX_SUPPLY_REACHED
+    # => [max_supply, current_supply, DATA_HASH, ...]
+
+    drop drop
+    # => [DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Compute unique asset commitment: hash(user_data_hash, next_token_id)
+    # Different token_id always produces a different hash, even with identical user data.
+    # -----------------------------------------------------------------------------------------
+
+    # Load next_token_id from saved metadata
+    padw loc_loadw_be.METADATA_LOCAL
+    # => [symbol, next_token_id, max_supply, current_supply, DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Extract just next_token_id
+    drop drop swap drop
+    # => [next_token_id, DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Build word [next_token_id, 0, 0, 0] for hmerge
+    push.0.0.0 movup.3
+    # => [next_token_id, 0, 0, 0, DATA_HASH, tag, note_type, RECIPIENT]
+
+    # hmerge([next_token_id, 0, 0, 0], DATA_HASH) → ASSET_DATA_HASH
+    swapw hmerge
+    # => [ASSET_DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Write token registry: key=[next_token_id, 0, 0, 0], value=ASSET_DATA_HASH
+    # -----------------------------------------------------------------------------------------
+
+    # Duplicate ASSET_DATA_HASH (we need it for create_non_fungible_asset later)
+    dup.3 dup.3 dup.3 dup.3
+    # => [ASSET_DATA_HASH_copy, ASSET_DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Load next_token_id again for the map key
+    padw loc_loadw_be.METADATA_LOCAL
+    drop drop swap drop
+    # => [next_token_id, ASSET_DATA_HASH_copy, ASSET_DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Build map key: [next_token_id, 0, 0, 0]
+    push.0.0.0 movup.3
+    # => [next_token_id, 0, 0, 0, ASSET_DATA_HASH_copy, ASSET_DATA_HASH, tag, note_type, RECIPIENT]
+
+    # set_map_item(slot_id, KEY, VALUE) → OLD_VALUE
+    push.NFT_TOKEN_MAP_SLOT[0..2] exec.native_account::set_map_item dropw
+    # => [ASSET_DATA_HASH, tag, note_type, RECIPIENT]
+
+    # Build NonFungibleAsset and mint it
+    # create_non_fungible_asset replaces hash[3] with faucet_id_prefix
+    # -----------------------------------------------------------------------------------------
+
+    exec.faucet::create_non_fungible_asset
+    # => [ASSET, tag, note_type, RECIPIENT]
+
+    # mint ensures asset preservation (validates faucet ownership of the asset)
+    exec.faucet::mint
+    # => [ASSET, tag, note_type, RECIPIENT]
+
+    # Update metadata: current_supply += 1, next_token_id += 1
+    # -----------------------------------------------------------------------------------------
+
+    movdn.9 movdn.9 movdn.9 movdn.9
+    # => [tag, note_type, RECIPIENT, ASSET]
+
+    padw loc_loadw_be.METADATA_LOCAL
+    # => [symbol, next_token_id, max_supply, current_supply, tag, note_type, RECIPIENT, ASSET]
+
+    # current_supply += 1
+    movup.3 add.1 movdn.3
+    # => [symbol, next_token_id, max_supply, new_current_supply, tag, note_type, RECIPIENT, ASSET]
+
+    # next_token_id += 1
+    movup.2 add.1 movdn.2
+    # => [symbol, new_next_token_id, max_supply, new_current_supply, tag, note_type, RECIPIENT, ASSET]
+
+    push.NFT_METADATA_SLOT[0..2] exec.native_account::set_item dropw
+    # => [tag, note_type, RECIPIENT, ASSET]
+
+    # Create output note with the minted asset
+    # -----------------------------------------------------------------------------------------
+
+    exec.output_note::create
+    # => [note_idx, ASSET]
+
+    dup movdn.5 movdn.5
+    # => [ASSET, note_idx, note_idx]
+
+    exec.output_note::add_asset
+    # => [note_idx]
+end
+
+#! Burns the non-fungible asset from the active note.
+#!
+#! Burning removes the asset from circulation and decrements current_supply.
+#! The next_token_id is NOT decremented (burned IDs are never reused).
+#! The token registry entry is NOT removed (serves as historical record).
+#!
+#! Inputs:  [pad(16)]
+#! Outputs: [pad(16)]
+#!
+#! Panics if:
+#! - the procedure is not called from a note context.
+#! - the note does not contain exactly one asset.
+#! - the asset was not issued by this faucet.
+#! - current_supply would underflow to below zero.
+#!
+#! Invocation: call
+pub proc burn
+    # Get the asset from the note
+    # -----------------------------------------------------------------------------------------
+
+    push.0 exec.active_note::get_assets
+    # => [num_assets, dest_ptr, pad(16)]
+
+    # Verify exactly one asset
+    assert.err=ERR_NFT_BURN_WRONG_NUMBER_OF_ASSETS
+    # => [dest_ptr, pad(16)]
+
+    mem_loadw_be
+    # => [ASSET, pad(16)]
+
+    # Burn the asset (validates faucet ownership)
+    # -----------------------------------------------------------------------------------------
+
+    exec.faucet::burn dropw
+    # => [pad(16)]
+
+    # Decrement current_supply in metadata
+    # -----------------------------------------------------------------------------------------
+
+    push.NFT_METADATA_SLOT[0..2] exec.active_account::get_item
+    # => [symbol, next_token_id, max_supply, current_supply, pad(16)]
+
+    # assert current_supply > 0
+    dup.3 neq.0 assert.err=ERR_NFT_BURN_SUPPLY_UNDERFLOW
+
+    # current_supply -= 1
+    movup.3 sub.1 movdn.3
+    # => [symbol, next_token_id, max_supply, new_current_supply, pad(16)]
+
+    push.NFT_METADATA_SLOT[0..2] exec.native_account::set_item dropw
+    # => [pad(16)]
+end
+
+#! Returns the data hash for a given token_id from the token registry.
+#!
+#! Inputs:  [token_id, pad(15)]
+#! Outputs: [DATA_HASH, pad(12)]
+#!
+#! Where:
+#! - token_id is the sequential token ID (0, 1, 2, ...).
+#! - DATA_HASH is the asset data hash commitment, or EMPTY_WORD if not minted.
+#!
+#! Invocation: call
+pub proc get_token_data
+    # Build map key: [token_id, 0, 0, 0]
+    push.0.0.0 movup.3
+    # => [token_id, 0, 0, 0, pad(15)]
+
+    push.NFT_TOKEN_MAP_SLOT[0..2] exec.active_account::get_map_item
+    # => [DATA_HASH, pad(12)]
+end

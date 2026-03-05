@@ -76,6 +76,26 @@ static NETWORK_FUNGIBLE_FAUCET_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
     Library::read_from_bytes(bytes).expect("Shipped Network Fungible Faucet library is well-formed")
 });
 
+// Initialize the Basic Non-Fungible Faucet library only once.
+static BASIC_NON_FUNGIBLE_FAUCET_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+    let bytes = include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/assets/account_components/faucets/basic_non_fungible_faucet.masl"
+    ));
+    Library::read_from_bytes(bytes)
+        .expect("Shipped Basic Non-Fungible Faucet library is well-formed")
+});
+
+// Initialize the Network Non-Fungible Faucet library only once.
+static NETWORK_NON_FUNGIBLE_FAUCET_LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+    let bytes = include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/assets/account_components/faucets/network_non_fungible_faucet.masl"
+    ));
+    Library::read_from_bytes(bytes)
+        .expect("Shipped Network Non-Fungible Faucet library is well-formed")
+});
+
 // METADATA LIBRARIES
 // ================================================================================================
 
@@ -101,6 +121,16 @@ pub fn basic_fungible_faucet_library() -> Library {
 /// Returns the Network Fungible Faucet Library.
 pub fn network_fungible_faucet_library() -> Library {
     NETWORK_FUNGIBLE_FAUCET_LIBRARY.clone()
+}
+
+/// Returns the Basic Non-Fungible Faucet Library.
+pub fn basic_non_fungible_faucet_library() -> Library {
+    BASIC_NON_FUNGIBLE_FAUCET_LIBRARY.clone()
+}
+
+/// Returns the Network Non-Fungible Faucet Library.
+pub fn network_non_fungible_faucet_library() -> Library {
+    NETWORK_NON_FUNGIBLE_FAUCET_LIBRARY.clone()
 }
 
 /// Returns the Storage Schema Library.
@@ -137,6 +167,8 @@ pub enum StandardAccountComponent {
     BasicWallet,
     BasicFungibleFaucet,
     NetworkFungibleFaucet,
+    BasicNonFungibleFaucet,
+    NetworkNonFungibleFaucet,
     AuthSingleSig,
     AuthSingleSigAcl,
     AuthMultisig,
@@ -150,6 +182,8 @@ impl StandardAccountComponent {
             Self::BasicWallet => BASIC_WALLET_LIBRARY.as_ref(),
             Self::BasicFungibleFaucet => BASIC_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
             Self::NetworkFungibleFaucet => NETWORK_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
+            Self::BasicNonFungibleFaucet => BASIC_NON_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
+            Self::NetworkNonFungibleFaucet => NETWORK_NON_FUNGIBLE_FAUCET_LIBRARY.as_ref(),
             Self::AuthSingleSig => SINGLESIG_LIBRARY.as_ref(),
             Self::AuthSingleSigAcl => SINGLESIG_ACL_LIBRARY.as_ref(),
             Self::AuthMultisig => MULTISIG_LIBRARY.as_ref(),
@@ -196,6 +230,14 @@ impl StandardAccountComponent {
                 Self::NetworkFungibleFaucet => {
                     component_interface_vec.push(AccountComponentInterface::NetworkFungibleFaucet)
                 },
+                Self::BasicNonFungibleFaucet => {
+                    component_interface_vec
+                        .push(AccountComponentInterface::BasicNonFungibleFaucet)
+                },
+                Self::NetworkNonFungibleFaucet => {
+                    component_interface_vec
+                        .push(AccountComponentInterface::NetworkNonFungibleFaucet)
+                },
                 Self::AuthSingleSig => {
                     component_interface_vec.push(AccountComponentInterface::AuthSingleSig)
                 },
@@ -221,6 +263,9 @@ impl StandardAccountComponent {
         Self::BasicWallet.extract_component(procedures_set, component_interface_vec);
         Self::BasicFungibleFaucet.extract_component(procedures_set, component_interface_vec);
         Self::NetworkFungibleFaucet.extract_component(procedures_set, component_interface_vec);
+        Self::BasicNonFungibleFaucet.extract_component(procedures_set, component_interface_vec);
+        Self::NetworkNonFungibleFaucet
+            .extract_component(procedures_set, component_interface_vec);
         Self::AuthSingleSig.extract_component(procedures_set, component_interface_vec);
         Self::AuthSingleSigAcl.extract_component(procedures_set, component_interface_vec);
         Self::AuthMultisig.extract_component(procedures_set, component_interface_vec);
