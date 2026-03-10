@@ -42,8 +42,8 @@ static TOKEN_MAP_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
 // ================================================================================================
 
 procedure_digest!(
-    BASIC_NON_FUNGIBLE_FAUCET_DISTRIBUTE,
-    BasicNonFungibleFaucet::DISTRIBUTE_PROC_NAME,
+    BASIC_NON_FUNGIBLE_FAUCET_MINT,
+    BasicNonFungibleFaucet::MINT_PROC_NAME,
     basic_non_fungible_faucet_library
 );
 
@@ -59,11 +59,11 @@ procedure_digest!(
 /// against this component, the `miden` library (i.e.
 /// [`ProtocolLib`](miden_protocol::ProtocolLib)) must be available to the assembler which is the
 /// case when using [`CodeBuilder`][builder]. The procedures of this component are:
-/// - `distribute`, which mints a unique NFT and creates a note for the provided recipient.
+/// - `mint`, which mints a unique NFT and creates a note for the provided recipient.
 /// - `burn`, which burns the provided non-fungible asset.
 /// - `get_token_data`, which reads the token registry by token_id.
 ///
-/// The `distribute` procedure can be called from a transaction script and requires authentication
+/// The `mint` procedure can be called from a transaction script and requires authentication
 /// via the authentication component. The `burn` procedure can only be called from a note script
 /// and requires the calling note to contain the asset to be burned.
 /// This component must be combined with an authentication component.
@@ -87,7 +87,7 @@ impl BasicNonFungibleFaucet {
     /// The name of the component.
     pub const NAME: &'static str = "miden::basic_non_fungible_faucet";
 
-    const DISTRIBUTE_PROC_NAME: &str = "basic_non_fungible_faucet::distribute";
+    const MINT_PROC_NAME: &str = "basic_non_fungible_faucet::mint";
     const BURN_PROC_NAME: &str = "basic_non_fungible_faucet::burn";
 
     // CONSTRUCTORS
@@ -195,9 +195,9 @@ impl BasicNonFungibleFaucet {
         self.metadata.next_token_id()
     }
 
-    /// Returns the digest of the `distribute` account procedure.
-    pub fn distribute_digest() -> Word {
-        *BASIC_NON_FUNGIBLE_FAUCET_DISTRIBUTE
+    /// Returns the digest of the `mint` account procedure.
+    pub fn mint_digest() -> Word {
+        *BASIC_NON_FUNGIBLE_FAUCET_MINT
     }
 
     /// Returns the digest of the `burn` account procedure.
@@ -258,11 +258,11 @@ impl TryFrom<&Account> for BasicNonFungibleFaucet {
 /// Creates a new faucet account with basic non-fungible faucet interface.
 ///
 /// The basic non-fungible faucet interface exposes three procedures:
-/// - `distribute`, which mints a unique NFT and creates a note for the provided recipient.
+/// - `mint`, which mints a unique NFT and creates a note for the provided recipient.
 /// - `burn`, which burns the provided non-fungible asset.
 /// - `get_token_data`, which reads the token registry by token_id.
 ///
-/// The `distribute` procedure can be called from a transaction script and requires authentication
+/// The `mint` procedure can be called from a transaction script and requires authentication
 /// via the specified authentication method. The `burn` procedure can only be called from a note
 /// script and requires the calling note to contain the asset to be burned.
 pub fn create_basic_non_fungible_faucet(
@@ -272,14 +272,14 @@ pub fn create_basic_non_fungible_faucet(
     account_storage_mode: AccountStorageMode,
     auth_method: AuthMethod,
 ) -> Result<Account, NonFungibleFaucetError> {
-    let distribute_proc_root = BasicNonFungibleFaucet::distribute_digest();
+    let mint_proc_root = BasicNonFungibleFaucet::mint_digest();
 
     let auth_component: AccountComponent = match auth_method {
         AuthMethod::SingleSig { approver: (pub_key, auth_scheme) } => AuthSingleSigAcl::new(
             pub_key,
             auth_scheme,
             AuthSingleSigAclConfig::new()
-                .with_auth_trigger_procedures(vec![distribute_proc_root])
+                .with_auth_trigger_procedures(vec![mint_proc_root])
                 .with_allow_unauthorized_input_notes(true),
         )
         .map_err(NonFungibleFaucetError::AccountError)?

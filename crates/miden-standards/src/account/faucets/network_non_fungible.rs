@@ -46,8 +46,8 @@ static TOKEN_MAP_SLOT_NAME: LazyLock<StorageSlotName> = LazyLock::new(|| {
 // ================================================================================================
 
 procedure_digest!(
-    NETWORK_NON_FUNGIBLE_FAUCET_DISTRIBUTE,
-    NetworkNonFungibleFaucet::DISTRIBUTE_PROC_NAME,
+    NETWORK_NON_FUNGIBLE_FAUCET_MINT,
+    NetworkNonFungibleFaucet::MINT_PROC_NAME,
     network_non_fungible_faucet_library
 );
 
@@ -63,12 +63,12 @@ procedure_digest!(
 /// against this component, the `miden` library (i.e.
 /// [`ProtocolLib`](miden_protocol::ProtocolLib)) must be available to the assembler which is the
 /// case when using [`CodeBuilder`][builder]. The procedures of this component are:
-/// - `distribute`, which mints a unique NFT and creates a note for the provided recipient.
+/// - `mint`, which mints a unique NFT and creates a note for the provided recipient.
 /// - `burn`, which burns the provided non-fungible asset.
 /// - `get_token_data`, which reads the token registry by token_id.
 /// - `get_owner`, `transfer_ownership`, `renounce_ownership` for owner management.
 ///
-/// Both `distribute` and `burn` can only be called from note scripts. `distribute` requires
+/// Both `mint` and `burn` can only be called from note scripts. `mint` requires
 /// the note sender to be the owner. `burn` does not require authentication.
 ///
 /// ## Storage Layout
@@ -90,7 +90,7 @@ impl NetworkNonFungibleFaucet {
     /// The name of the component.
     pub const NAME: &'static str = "miden::network_non_fungible_faucet";
 
-    const DISTRIBUTE_PROC_NAME: &str = "network_non_fungible_faucet::distribute";
+    const MINT_PROC_NAME: &str = "network_non_fungible_faucet::mint";
     const BURN_PROC_NAME: &str = "network_non_fungible_faucet::burn";
 
     // CONSTRUCTORS
@@ -230,8 +230,8 @@ impl NetworkNonFungibleFaucet {
         self.owner_account_id
     }
 
-    pub fn distribute_digest() -> Word {
-        *NETWORK_NON_FUNGIBLE_FAUCET_DISTRIBUTE
+    pub fn mint_digest() -> Word {
+        *NETWORK_NON_FUNGIBLE_FAUCET_MINT
     }
 
     pub fn burn_digest() -> Word {
@@ -308,7 +308,7 @@ impl TryFrom<&Account> for NetworkNonFungibleFaucet {
 /// - [`AccountStorageMode::Network`] for storage
 /// - [`NoAuth`] for authentication
 ///
-/// Owner is verified via the ownable component on `distribute` calls.
+/// Owner is verified via the ownable component on `mint` calls.
 pub fn create_network_non_fungible_faucet(
     init_seed: [u8; 32],
     symbol: TokenSymbol,

@@ -1,6 +1,6 @@
 # NON-FUNGIBLE FAUCET STANDARDS LIBRARY
 #
-# Core distribute/burn/query logic for non-fungible faucets.
+# Core mint/burn/query logic for non-fungible faucets.
 # Mirrors standards/faucets/mod.masm (fungible faucet logic).
 # =================================================================================================
 
@@ -39,7 +39,7 @@ const NFT_TOKEN_MAP_SLOT=word("miden::standards::nft::tokens")
 # PROCEDURES
 # =================================================================================================
 
-#! Distributes a freshly minted non-fungible asset to the provided recipient by creating a note.
+#! Mints a fresh non-fungible asset and sends it to the provided recipient by creating a note.
 #!
 #! Computes asset_data = hash(user_data_commitment, next_token_id) for uniqueness by construction,
 #! writes the token registry, mints the asset, and creates a P2ID output note.
@@ -62,7 +62,7 @@ const NFT_TOKEN_MAP_SLOT=word("miden::standards::nft::tokens")
 #!
 #! Invocation: exec
 @locals(8)
-pub proc distribute
+pub proc mint
     # Save the user data hash to local memory for later use in hmerge.
     # -----------------------------------------------------------------------------------------
     loc_storew_be.DATA_HASH_LOCAL

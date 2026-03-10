@@ -194,7 +194,7 @@ fn basic_nff_faucet_create_from_account() {
 
 #[test]
 fn basic_nff_get_faucet_procedures() {
-    let _distribute_digest = BasicNonFungibleFaucet::distribute_digest();
+    let _mint_digest = BasicNonFungibleFaucet::mint_digest();
     let _burn_digest = BasicNonFungibleFaucet::burn_digest();
 }
 
@@ -203,6 +203,6 @@ fn basic_nff_get_faucet_procedures() {
 
 #[test]
 fn network_nff_get_faucet_procedures() {
-    let _distribute_digest = NetworkNonFungibleFaucet::distribute_digest();
+    let _mint_digest = NetworkNonFungibleFaucet::mint_digest();
     let _burn_digest = NetworkNonFungibleFaucet::burn_digest();
 }

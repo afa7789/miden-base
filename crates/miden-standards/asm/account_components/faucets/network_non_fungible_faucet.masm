@@ -48,7 +48,7 @@ pub use ownable::renounce_ownership
 # ASSET DISTRIBUTION
 # ================================================================================================
 
-#! Distributes a freshly minted non-fungible asset to the provided recipient.
+#! Mints a fresh non-fungible asset and sends it to the provided recipient.
 #!
 #! This procedure first checks if the note sender is the owner of the faucet, and then
 #! mints the asset and creates an output note with that asset for the recipient.
@@ -65,14 +65,14 @@ pub use ownable::renounce_ownership
 #!
 #! Panics if:
 #! - the note sender is not the owner of this faucet.
-#! - any of the validations in non_fungible::distribute fail.
+#! - any of the validations in non_fungible::mint fail.
 #!
 #! Invocation: call
-pub proc distribute
+pub proc mint
     exec.ownable::verify_owner
     # => [DATA_HASH, tag, note_type, RECIPIENT, pad(6)]
 
-    exec.non_fungible::distribute
+    exec.non_fungible::mint
     # => [note_idx, pad(15)]
 end
 

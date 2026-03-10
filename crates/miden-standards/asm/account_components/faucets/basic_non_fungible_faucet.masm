@@ -7,17 +7,17 @@ use miden::standards::faucets::non_fungible
 # PROCEDURES
 # =================================================================================================
 
-#! Distributes a freshly minted non-fungible asset to the provided recipient.
+#! Mints a non-fungible asset and sends it to the provided recipient.
 #!
 #! Inputs:  [DATA_HASH, tag, note_type, RECIPIENT, pad(6)]
 #! Outputs: [note_idx, pad(15)]
 #!
 #! Panics if:
-#! - any of the validations in non_fungible::distribute fail.
+#! - any of the validations in non_fungible::mint fail.
 #!
 #! Invocation: call
-pub proc distribute
-    exec.non_fungible::distribute
+pub proc mint
+    exec.non_fungible::mint
     # => [note_idx, pad(15)]
 end
 
